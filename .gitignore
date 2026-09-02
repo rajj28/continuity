@@ -1,0 +1,30 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+
+# SECRETS — never commit
+.env
+.env.local
+*.token
+*-key.json
+sa-*.json
+credentials.json
+application_default_credentials.json
+
+# Generated media / artifacts
+out/
+artifacts/
+*.wav
+*.mp3
+*.mp4
+!media/fixtures/*.wav
+
+# OS
+Thumbs.db
+.DS_Store

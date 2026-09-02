@@ -1,0 +1,139 @@
+{
+  "_comment": [
+    "Per-market delivery and editorial rules. Versioned in the repo on purpose:",
+    "these are the thresholds that decide whether a release ships, so they must be",
+    "reviewable in a diff, not hidden in a database or invented by a model.",
+    "Loudness targets follow the recommendation family each territory's",
+    "broadcasters align to (EBU R128 in Europe, ATSC A/85 elsewhere).",
+    "Sync tolerance is a deliberate simplification -- see docs/LIMITATIONS.md."
+  ],
+  "_version": 1,
+  "markets": {
+    "fr-FR": {
+      "name": "France",
+      "language": "French",
+      "ratings_body": "CSA",
+      "requires": ["SDH_CAPTIONS", "AUDIO_DESCRIPTION"],
+      "delivery": {
+        "loudness_target_lufs": -23.0,
+        "loudness_tolerance_lu": 1.0,
+        "true_peak_max_dbtp": -2.0,
+        "sync_tolerance_ms": 120.0,
+        "subtitle_max_cps": 20.0,
+        "subtitle_min_duration_ms": 833,
+        "subtitle_max_lines": 2,
+        "subtitle_max_line_chars": 42,
+        "subtitle_min_gap_ms": 84
+      },
+      "quality": {
+        "semantic_fidelity_floor": 0.85,
+        "speech_rate_max_wpm": 190.0
+      },
+      "editorial": { "expansion_vs_english": 1.15, "sensitive_topics": [] },
+      "rights_required": ["MUSIC_CUE_SYNC"]
+    },
+    "de-DE": {
+      "name": "Germany",
+      "language": "German",
+      "ratings_body": "FSK",
+      "requires": ["SDH_CAPTIONS", "AUDIO_DESCRIPTION"],
+      "delivery": {
+        "loudness_target_lufs": -23.0,
+        "loudness_tolerance_lu": 1.0,
+        "true_peak_max_dbtp": -2.0,
+        "sync_tolerance_ms": 120.0,
+        "subtitle_max_cps": 20.0,
+        "subtitle_min_duration_ms": 833,
+        "subtitle_max_lines": 2,
+        "subtitle_max_line_chars": 42,
+        "subtitle_min_gap_ms": 84
+      },
+      "quality": {
+        "semantic_fidelity_floor": 0.85,
+        "speech_rate_max_wpm": 185.0
+      },
+      "editorial": {
+        "expansion_vs_english": 1.22,
+        "_note": "German runs ~20-30% longer than English. This is the single",
+        "_note2": "most common cause of dub overrun and the reason retiming fails.",
+        "sensitive_topics": []
+      },
+      "rights_required": ["MUSIC_CUE_SYNC"]
+    },
+    "pt-BR": {
+      "name": "Brazil",
+      "language": "Portuguese (Brazil)",
+      "ratings_body": "ClassInd",
+      "requires": ["SDH_CAPTIONS"],
+      "delivery": {
+        "loudness_target_lufs": -24.0,
+        "loudness_tolerance_lu": 2.0,
+        "true_peak_max_dbtp": -2.0,
+        "sync_tolerance_ms": 120.0,
+        "subtitle_max_cps": 20.0,
+        "subtitle_min_duration_ms": 833,
+        "subtitle_max_lines": 2,
+        "subtitle_max_line_chars": 42,
+        "subtitle_min_gap_ms": 84
+      },
+      "quality": {
+        "semantic_fidelity_floor": 0.85,
+        "speech_rate_max_wpm": 195.0
+      },
+      "editorial": { "expansion_vs_english": 1.18, "sensitive_topics": [] },
+      "rights_required": ["MUSIC_CUE_SYNC"]
+    },
+    "hi-IN": {
+      "name": "India",
+      "language": "Hindi",
+      "ratings_body": "CBFC",
+      "requires": ["SDH_CAPTIONS"],
+      "delivery": {
+        "loudness_target_lufs": -24.0,
+        "loudness_tolerance_lu": 2.0,
+        "true_peak_max_dbtp": -2.0,
+        "sync_tolerance_ms": 120.0,
+        "subtitle_max_cps": 20.0,
+        "subtitle_min_duration_ms": 833,
+        "subtitle_max_lines": 2,
+        "subtitle_max_line_chars": 42,
+        "subtitle_min_gap_ms": 84
+      },
+      "quality": {
+        "semantic_fidelity_floor": 0.85,
+        "speech_rate_max_wpm": 190.0
+      },
+      "editorial": { "expansion_vs_english": 1.10, "sensitive_topics": [] },
+      "rights_required": ["MUSIC_CUE_SYNC"]
+    },
+    "ja-JP": {
+      "name": "Japan",
+      "language": "Japanese",
+      "ratings_body": "EIRIN",
+      "requires": ["SDH_CAPTIONS"],
+      "delivery": {
+        "loudness_target_lufs": -24.0,
+        "loudness_tolerance_lu": 1.0,
+        "true_peak_max_dbtp": -1.0,
+        "sync_tolerance_ms": 120.0,
+        "subtitle_max_cps": 11.0,
+        "subtitle_min_duration_ms": 1000,
+        "subtitle_max_lines": 2,
+        "subtitle_max_line_chars": 16,
+        "subtitle_min_gap_ms": 84
+      },
+      "quality": {
+        "semantic_fidelity_floor": 0.85,
+        "speech_rate_max_wpm": 170.0
+      },
+      "editorial": {
+        "expansion_vs_english": 0.92,
+        "honorific_rules": "keigo",
+        "_note": "Dropping an honorific changes the relationship between",
+        "_note2": "characters. Any rewrite touching one escalates to L4.",
+        "sensitive_topics": ["honorific_register", "name_order"]
+      },
+      "rights_required": ["MUSIC_CUE_SYNC", "STOCK_FOOTAGE"]
+    }
+  }
+}
