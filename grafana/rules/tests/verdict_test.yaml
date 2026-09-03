@@ -1,0 +1,197 @@
+# Unit tests for the verdict. Run with:
+#   bin/promtool.exe test rules grafana/rules/tests/verdict_test.yaml
+#
+# The rule that decides whether content ships is the most consequential logic
+# in the system, so it is tested like code rather than eyeballed on a dashboard.
+# A reviewer can read this file and know exactly what turns a market green.
+
+rule_files:
+  - ../recording.yaml
+  - ../alerts.yaml
+
+evaluation_interval: 30s
+
+tests:
+
+  # ------------------------------------------------------------------
+  # A clean market ships.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: all requirements met and nothing stale -> ready
+    input_series:
+      - series: 'market_threshold{market="fr-FR",requirement="dub_sync_max_ms"}'
+        values: '120x10'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '41x10'
+      - series: 'asset_stale{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="fr-FR",title="SINTEL"}'
+            value: 1
+    alert_rule_test:
+      - alertname: MarketNotReleaseReady
+        eval_time: 4m
+        exp_alerts: []
+
+  # ------------------------------------------------------------------
+  # The demo's blocked market. 480 ms against a 120 ms tolerance.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: sync breach blocks the market and fires the alert
+    input_series:
+      - series: 'market_threshold{market="de-DE",requirement="dub_sync_max_ms"}'
+        values: '120x20'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="de-DE"}'
+        values: '480x20'
+      - series: 'asset_stale{title="SINTEL",scene="S01",market="de-DE"}'
+        values: '0x20'
+    promql_expr_test:
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="de-DE",title="SINTEL"}'
+            value: 0
+    alert_rule_test:
+      # must NOT fire before `for: 2m` has elapsed
+      - alertname: MarketNotReleaseReady
+        eval_time: 1m
+        exp_alerts: []
+      - alertname: MarketNotReleaseReady
+        eval_time: 4m
+        exp_alerts:
+          - exp_labels:
+              alertname: MarketNotReleaseReady
+              market: de-DE
+              title: SINTEL
+              severity: critical
+              team: release_ops
+              continuity_action: investigate
+            exp_annotations:
+              summary: "de-DE cannot ship SINTEL"
+              description: >-
+                Release readiness for SINTEL in de-DE is 0. Either a delivery
+                requirement is failing or an asset is stale against the current
+                master.
+              runbook: https://github.com/rajj28/continuity/blob/main/docs/DEMO_RUNBOOK.md
+
+  # ------------------------------------------------------------------
+  # Quality can be perfect and the market still cannot ship.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: a stale asset blocks even when every measurement passes
+    input_series:
+      - series: 'market_threshold{market="hi-IN",requirement="dub_sync_max_ms"}'
+        values: '120x10'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="hi-IN"}'
+        values: '63x10'
+      - series: 'asset_stale{title="SINTEL",scene="S01",market="hi-IN"}'
+        values: '1x10'
+    promql_expr_test:
+      - expr: market_requirements_all_met
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_requirements_all_met{market="hi-IN",title="SINTEL"}'
+            value: 1
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="hi-IN",title="SINTEL"}'
+            value: 0
+
+  # ------------------------------------------------------------------
+  # One bad scene blocks the whole market. This is why the rollup is min().
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: one failing scene blocks the market
+    input_series:
+      - series: 'market_threshold{market="pt-BR",requirement="dub_sync_max_ms"}'
+        values: '120x10'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="pt-BR"}'
+        values: '55x10'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S02",market="pt-BR"}'
+        values: '310x10'
+      - series: 'asset_stale{title="SINTEL",scene="S01",market="pt-BR"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="pt-BR",title="SINTEL"}'
+            value: 0
+
+  # ------------------------------------------------------------------
+  # Loudness is a band. Too quiet must fail exactly as too loud does.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: loudness is judged as a two-sided band
+    input_series:
+      - series: 'market_threshold{market="de-DE",requirement="loudness_target_lufs"}'
+        values: '-23x10'
+      - series: 'market_threshold{market="de-DE",requirement="loudness_tolerance_lu"}'
+        values: '1x10'
+      # in band (-23.4), too loud (-21.0), too quiet (-25.5)
+      - series: 'audio_loudness_lufs{title="SINTEL",scene="S01",market="de-DE"}'
+        values: '-23.4x10'
+      - series: 'audio_loudness_lufs{title="SINTEL",scene="S02",market="de-DE"}'
+        values: '-21.0x10'
+      - series: 'audio_loudness_lufs{title="SINTEL",scene="S03",market="de-DE"}'
+        values: '-25.5x10'
+    promql_expr_test:
+      - expr: scene_requirement_met{requirement="loudness"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'scene_requirement_met{market="de-DE",requirement="loudness",scene="S01",title="SINTEL"}'
+            value: 1
+          - labels: 'scene_requirement_met{market="de-DE",requirement="loudness",scene="S02",title="SINTEL"}'
+            value: 0
+          - labels: 'scene_requirement_met{market="de-DE",requirement="loudness",scene="S03",title="SINTEL"}'
+            value: 0
+
+  # ------------------------------------------------------------------
+  # The safety property: a market we cannot measure is not shippable.
+  # An absent verdict must never read as a pass.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: no measurements means no verdict, never a green light
+    input_series:
+      - series: 'market_threshold{market="ja-JP",requirement="dub_sync_max_ms"}'
+        values: '120x10'
+      - series: 'asset_stale{title="SINTEL",scene="S01",market="ja-JP"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples: []
+      - expr: market_release_ready == 1
+        eval_time: 3m
+        exp_samples: []
+
+  # ------------------------------------------------------------------
+  # Two verified-failed repairs on one strategy means autonomy is not
+  # converging, and a human should be told.
+  # ------------------------------------------------------------------
+  - interval: 1m
+    name: repeated verification failure escalates
+    input_series:
+      - series: 'continuity_repairs_total{market="de-DE",strategy="RETIME",outcome="failed"}'
+        values: '0 0 1 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2'
+    alert_rule_test:
+      - alertname: RepairVerificationFailing
+        eval_time: 10m
+        exp_alerts:
+          - exp_labels:
+              alertname: RepairVerificationFailing
+              market: de-DE
+              strategy: RETIME
+              severity: warning
+              team: release_ops
+              continuity_action: escalate
+            exp_annotations:
+              summary: "RETIME failed verification twice in de-DE"
+              description: >-
+                Two verified-failed repairs on the same strategy. The Conductor
+                should have replanned; if this is still firing, autonomy is not
+                converging and a human should look.

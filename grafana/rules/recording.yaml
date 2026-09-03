@@ -1,0 +1,116 @@
+# The verdict, as code.
+#
+# `market_release_ready` is the single source of release truth. It is computed
+# by the Mimir ruler from published facts, and NO agent has RBAC to write it.
+# The only way an agent can turn a market green is to change the physical asset
+# until the measurement changes. That is the trust property the whole product
+# rests on, and it is enforced here rather than promised in a prompt.
+#
+# Thresholds are themselves metrics (`market_threshold`, published from
+# assets/market_profiles.json). Three consequences worth the indirection:
+#   - the comparison is a pure PromQL join between two published facts
+#   - changing a market's tolerance is a data change, visible in Grafana
+#   - the agent can query the threshold it is being judged against, instead of
+#     being told what it is
+#
+# Every comparison uses `bool` so it yields 1/0 rather than filtering the
+# series away -- a dropped series and a failing series must not look alike.
+
+groups:
+  - name: continuity_requirements
+    interval: 30s
+    rules:
+
+      # ---- per-scene checks -------------------------------------------
+      # `group_left()` because a threshold is one series per market while the
+      # measurements are many (one per scene).
+
+      - record: scene_requirement_met
+        expr: |
+          dub_sync_offset_ms
+            <= bool on (market) group_left ()
+          market_threshold{requirement="dub_sync_max_ms"}
+        labels:
+          requirement: dub_sync
+
+      - record: scene_requirement_met
+        expr: |
+          subtitle_reading_rate_cps
+            <= bool on (market) group_left ()
+          market_threshold{requirement="subtitle_max_cps"}
+        labels:
+          requirement: subtitle_rate
+
+      - record: scene_requirement_met
+        expr: |
+          audio_true_peak_dbtp
+            <= bool on (market) group_left ()
+          market_threshold{requirement="true_peak_max_dbtp"}
+        labels:
+          requirement: true_peak
+
+      - record: scene_requirement_met
+        expr: |
+          speech_rate_wpm
+            <= bool on (market) group_left ()
+          market_threshold{requirement="speech_rate_max_wpm"}
+        labels:
+          requirement: speech_rate
+
+      - record: scene_requirement_met
+        expr: |
+          semantic_fidelity_score
+            >= bool on (market) group_left ()
+          market_threshold{requirement="semantic_fidelity_floor"}
+        labels:
+          requirement: semantic_fidelity
+
+      # Loudness is a two-sided tolerance band, not a ceiling: too quiet fails
+      # delivery exactly as surely as too loud.
+      - record: scene_requirement_met
+        expr: |
+          abs(
+            audio_loudness_lufs
+              - on (market) group_left ()
+            market_threshold{requirement="loudness_target_lufs"}
+          )
+            <= bool on (market) group_left ()
+          market_threshold{requirement="loudness_tolerance_lu"}
+        labels:
+          requirement: loudness
+
+      # ---- rollups -----------------------------------------------------
+      # min() because a market ships only if EVERY scene passes. One bad scene
+      # blocks the market, which is how a real delivery works.
+
+      - record: market_requirement_met
+        expr: min by (title, market, requirement) (scene_requirement_met)
+
+      - record: market_requirements_all_met
+        expr: min by (title, market) (market_requirement_met)
+
+      # Staleness is a separate axis: an asset can pass every quality check and
+      # still be invalid because its parent moved underneath it.
+      - record: market_has_stale_assets
+        expr: clamp_max(max by (title, market) (asset_stale), 1)
+
+  - name: continuity_verdict
+    interval: 30s
+    rules:
+
+      # THE VERDICT. 1 = shippable. Requires every requirement met AND nothing
+      # stale. Absent inputs make this absent rather than 1: a market we cannot
+      # measure is not a market we may ship.
+      - record: market_release_ready
+        expr: |
+          market_requirements_all_met
+            * on (title, market) group_left ()
+          (1 - market_has_stale_assets)
+
+      # Business metrics for the release board -- the numbers a VP of Content
+      # Operations is actually measured on.
+      - record: markets_ready_total
+        expr: sum by (title) (market_release_ready)
+
+      - record: markets_blocked_total
+        expr: sum by (title) (1 - market_release_ready)

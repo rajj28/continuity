@@ -1,0 +1,67 @@
+# Alerts. `MarketNotReleaseReady` is what wakes the agent: its contact point
+# posts to the Cloud Run webhook, which publishes to Pub/Sub, which starts the
+# Release Conductor with the incident context.
+#
+# The control loop therefore BEGINS in Grafana. There is no user prompt at the
+# start of it, and the agents cannot edit these rules.
+
+groups:
+  - name: continuity_release
+    interval: 30s
+    rules:
+
+      - alert: MarketNotReleaseReady
+        expr: market_release_ready == 0
+        # 2m is deliberate. A repair briefly makes an asset absent while the
+        # new version is written; firing on that transient would have the agent
+        # investigating its own work.
+        for: 2m
+        labels:
+          severity: critical
+          team: release_ops
+          continuity_action: investigate
+        annotations:
+          summary: "{{ $labels.market }} cannot ship {{ $labels.title }}"
+          description: >-
+            Release readiness for {{ $labels.title }} in {{ $labels.market }}
+            is 0. Either a delivery requirement is failing or an asset is stale
+            against the current master.
+          runbook: https://github.com/rajj28/continuity/blob/main/docs/DEMO_RUNBOOK.md
+
+      # Fires the moment a master changes, ahead of the verdict flipping, so the
+      # agent can begin computing blast radius while the rollups settle.
+      - alert: AssetsWentStale
+        expr: sum by (title, market) (asset_stale) > 0
+        for: 1m
+        labels:
+          severity: warning
+          team: release_ops
+          continuity_action: compute_blast_radius
+        annotations:
+          summary: >-
+            {{ $value }} stale asset(s) in {{ $labels.market }} for
+            {{ $labels.title }}
+          description: >-
+            One or more assets record a parent hash that no longer matches the
+            parent. A master or upstream derivative has changed.
+
+      # A repair that does not move the metric is the interesting failure, and
+      # it must be visible rather than silently retried forever.
+      - alert: RepairVerificationFailing
+        expr: |
+          sum by (market, strategy) (
+            increase(continuity_repairs_total{outcome="failed"}[15m])
+          ) >= 2
+        for: 0m
+        labels:
+          severity: warning
+          team: release_ops
+          continuity_action: escalate
+        annotations:
+          summary: >-
+            {{ $labels.strategy }} failed verification twice in
+            {{ $labels.market }}
+          description: >-
+            Two verified-failed repairs on the same strategy. The Conductor
+            should have replanned; if this is still firing, autonomy is not
+            converging and a human should look.
