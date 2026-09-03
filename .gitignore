@@ -32,3 +32,6 @@ Thumbs.db
 # Local binaries
 bin/
 out/
+
+# Large source master — fetched via `make fetch-master`, see assets/SOURCES.md
+assets/sintel/*.mp4
