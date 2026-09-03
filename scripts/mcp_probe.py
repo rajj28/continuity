@@ -163,8 +163,15 @@ def main() -> None:
             print(block.get("text", json.dumps(block))[:4000])
         if out.get("isError"):
             print("\n[tool reported an error]")
+    elif command == "schema":
+        want = sys.argv[3]
+        tools = client.request("tools/list").get("tools", [])
+        tool = next((t for t in tools if t["name"] == want), None)
+        if tool is None:
+            raise SystemExit(f"no such tool {want!r}")
+        print(json.dumps(tool.get("inputSchema", {}), indent=2)[:3000])
     else:
-        raise SystemExit(f"unknown command {command!r}; use 'tools' or 'call'")
+        raise SystemExit(f"unknown command {command!r}; use 'tools', 'schema' or 'call'")
 
 
 if __name__ == "__main__":

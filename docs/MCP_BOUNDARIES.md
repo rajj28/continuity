@@ -77,3 +77,30 @@ which typed tool produced which piece of evidence.
   scrapeable without instrumenting the client.
 - `-loki-guardrail-mode` -- query cost guardrail; set to `enforce` before the
   demo so a runaway LogQL query cannot burn the free-tier budget.
+
+## Verified argument conventions (3 Sep 2026)
+
+Tool argument names are not guessable and are not uniform. Use
+`python scripts/mcp_probe.py grafana schema <tool>` rather than assuming:
+
+- Grafana-native tools use **camelCase**: `datasourceUid`, `queryType`,
+  `endTime`, `startTime`, `stepSeconds`.
+- Proxied Tempo tools keep their **snake_case** originals: `trace_id`, not
+  `traceId` -- while still requiring the camelCase `datasourceUid` that
+  mcp-grafana injects. Both conventions appear in one call.
+- `query_prometheus` **requires `endTime`** even for an instant query; omitting
+  it fails with a time-parse error rather than defaulting to now.
+
+## Verified: OTel to Prometheus metric naming
+
+The conversion appends a full-word unit suffix, which silently renames series:
+
+| instrument | unit | series in Mimir |
+|---|---|---|
+| `nt_offset` | `ms` | `nt_offset_milliseconds` |
+| `nt_ready` | `"1"` | `nt_ready_ratio` |
+| `nt_stale` | `""` | `nt_stale` |
+
+Continuity therefore bakes units into metric names and sets `unit=""`, so the
+names in `telemetry/metrics.py` are exactly the names the recording rules,
+dashboards and the agent's PromQL reference. See that module for the rationale.
