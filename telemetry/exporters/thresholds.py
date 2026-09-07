@@ -67,6 +67,7 @@ REQUIRED_CHECKS: dict[str, tuple[str, ...]] = {
 PUBLISHED: dict[str, str] = {
     "delivery.sync_tolerance_ms": "dub_sync_max_ms",
     "delivery.line_overrun_max_ms": "line_overrun_max_ms",
+    "accessibility.ad_collision_max_ms": "ad_collision_max_ms",
     "delivery.subtitle_max_cps": "subtitle_max_cps",
     "delivery.subtitle_min_duration_ms": "subtitle_min_duration_ms",
     "delivery.subtitle_max_lines": "subtitle_max_lines",
@@ -106,6 +107,13 @@ def required_checks(profile: dict) -> list[str]:
     spec = profile.get("technical", {})
     checks += [f"tech_{name}" for name in TECHNICAL_CHECKS if name in spec]
     checks += list(MARKET_CHECKS)
+    # Conditional, unlike everything else here. A market that does not require
+    # audio description is not marked down for having none, and one that does
+    # is judged on whether the track it has actually stays out of the dialogue.
+    # Coverage that ignored the condition would either excuse France or
+    # penalise Brazil, and both would be wrong.
+    if "AUDIO_DESCRIPTION" in profile.get("requires", []):
+        checks.append("ad_collision")
     return checks
 
 

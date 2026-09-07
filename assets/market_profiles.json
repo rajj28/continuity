@@ -47,6 +47,9 @@
         "frame_rate": 24,
         "audio_sample_rate": 48000,
         "audio_channels": 2
+      },
+      "accessibility": {
+        "ad_collision_max_ms": 0
       }
     },
     "de-DE": {
@@ -89,6 +92,9 @@
         "frame_rate": 24,
         "audio_sample_rate": 48000,
         "audio_channels": 2
+      },
+      "accessibility": {
+        "ad_collision_max_ms": 0
       }
     },
     "pt-BR": {
@@ -128,6 +134,9 @@
         "frame_rate": 24,
         "audio_sample_rate": 48000,
         "audio_channels": 2
+      },
+      "accessibility": {
+        "ad_collision_max_ms": 0
       }
     },
     "hi-IN": {
@@ -167,6 +176,9 @@
         "frame_rate": 24,
         "audio_sample_rate": 48000,
         "audio_channels": 2
+      },
+      "accessibility": {
+        "ad_collision_max_ms": 0
       }
     },
     "ja-JP": {
@@ -214,6 +226,9 @@
         "audio_sample_rate": 48000,
         "audio_channels": 6,
         "_note": "Premium VOD in Japan requires a 5.1 configuration. The Sintel master is stereo, so this is not a defect to repair -- it is a deliverable that does not exist, and no filter can honestly manufacture one."
+      },
+      "accessibility": {
+        "ad_collision_max_ms": 0
       }
     }
   }

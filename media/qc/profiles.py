@@ -20,6 +20,7 @@ _PROFILES = Path(__file__).resolve().parents[2] / "assets" / "market_profiles.js
 _RULES: dict[str, tuple[str, str]] = {
     "delivery.dub_sync_offset_ms":        ("delivery.sync_tolerance_ms", "lte"),
     "delivery.line_overrun_ms":           ("delivery.line_overrun_max_ms", "lte"),
+    "accessibility.ad_collision_ms":      ("accessibility.ad_collision_max_ms", "lte"),
     "delivery.subtitle_reading_rate_cps": ("delivery.subtitle_max_cps", "lte"),
     "delivery.subtitle_min_duration_ms":  ("delivery.subtitle_min_duration_ms", "gte"),
     "delivery.subtitle_max_lines":        ("delivery.subtitle_max_lines", "lte"),

@@ -46,6 +46,18 @@ groups:
         labels:
           requirement: line_overrun
 
+      # Audio description that runs past its gap is narration over dialogue.
+      # Only markets that require the deliverable are judged on it -- see
+      # required_checks(), which adds this conditionally so a market with no
+      # such obligation is neither excused nor penalised.
+      - record: scene_requirement_met
+        expr: |
+          ad_collision_ms
+            <= bool on (market) group_left ()
+          market_threshold{requirement="ad_collision_max_ms"}
+        labels:
+          requirement: ad_collision
+
       - record: scene_requirement_met
         expr: |
           subtitle_reading_rate_cps

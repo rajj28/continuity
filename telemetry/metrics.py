@@ -37,6 +37,8 @@ from opentelemetry import metrics
 
 SYNC_OFFSET = "dub_sync_offset_ms"
 LINE_OVERRUN = "dub_line_overrun_ms"
+AD_COLLISION = "ad_collision_ms"
+AD_COVERAGE = "ad_coverage_ratio"
 SPEECH_RATE = "speech_rate_wpm"
 SUBTITLE_RATE = "subtitle_reading_rate_cps"
 LOUDNESS = "audio_loudness_lufs"
@@ -58,6 +60,8 @@ ASSETS_REGENERATED = "continuity_assets_regenerated_total"
 MEASUREMENT_SERIES: dict[str, str] = {
     "delivery.dub_sync_offset_ms": SYNC_OFFSET,
     "delivery.line_overrun_ms": LINE_OVERRUN,
+    "accessibility.ad_collision_ms": AD_COLLISION,
+    "accessibility.ad_coverage_ratio": AD_COVERAGE,
     "delivery.subtitle_reading_rate_cps": SUBTITLE_RATE,
     "delivery.audio_loudness_lufs": LOUDNESS,
     "delivery.audio_true_peak_dbtp": TRUE_PEAK,

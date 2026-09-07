@@ -77,3 +77,21 @@ a mock in this position would invalidate the one claim the project rests on.
   the alert re-delivers -- which it will, in at most one `repeat_interval`.
   The interface is the one Pub/Sub fits behind, so this is a substitution and
   not a rewrite.
+
+## Audio description
+
+- **The word budget is calibrated to the synthesiser, not to a human narrator.**
+  Broadcast practice puts AD narration near 160 words per minute. Budgeting at
+  that rate produced "Sintel runzelt." -- two words -- as 1920 ms of audio in a
+  1000 ms gap. Gemini TTS reads narration at roughly 85 wpm once its ~290 ms of
+  leading silence is counted, so the budget uses the measured figure. It is
+  still an estimate, which is why stage 4 re-writes shorter when the synthesised
+  audio overruns rather than trusting the arithmetic.
+- **Description quality is not measured, only its fit.** `ad_collision_ms` is a
+  fact about audio: does the narration talk over dialogue. Whether it describes
+  the *right* thing is an editorial judgement this system does not attempt, and
+  a track that scores perfectly on collision may still be a poor description.
+  Human AD review is a step, not an optional one.
+- **Gaps shorter than 700 ms are skipped entirely.** Sintel S03 has a 350 ms gap
+  between two lines that will hold nothing; describing into it would be worse
+  than silence.
