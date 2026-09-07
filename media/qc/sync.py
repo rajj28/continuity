@@ -31,23 +31,78 @@ def _percentile(values: list[float], pct: float) -> float:
     return ordered[rank - 1]
 
 
+def _overlap_ms(a: Interval, b: Interval) -> float:
+    return max(0.0, min(a.end_ms, b.end_ms) - max(a.start_ms, b.start_ms))
+
+
+def _slot_for(span: Interval, reference: list[Interval]) -> int:
+    """Which line this piece of speech belongs to.
+
+    Three rules, in order, and the order is the whole point:
+
+      1. the slot it overlaps most. A span sitting inside a cue belongs to
+         that cue, whatever its onset happens to be nearest to.
+      2. failing any overlap, the last cue that has already started. Speech
+         that runs past its slot belongs to the line it came from, not to the
+         one it spilled into.
+      3. failing that, the first line -- speech before the first cue.
+
+    Nearest-by-onset, the obvious rule, is wrong: the second half of "Terre de
+    dragons, Sintel" sits squarely inside its own cue but starts closer to the
+    NEXT cue than to its own, so nearest-onset moved it forward a line and
+    reported 1192 ms of drift for audio that was in tolerance.
+    """
+    overlaps = [_overlap_ms(span, ref) for ref in reference]
+    best = max(range(len(reference)), key=lambda i: overlaps[i])
+    if overlaps[best] > 0:
+        return best
+    started = [i for i, ref in enumerate(reference) if ref.start_ms <= span.start_ms]
+    return started[-1] if started else 0
+
+
 def align(
     reference: list[Interval], measured: list[Interval]
 ) -> tuple[list[tuple[Interval, Interval]], str | None]:
-    """Pair reference utterances with dubbed ones, by index.
+    """Pair each reference utterance with the speech that belongs to it.
 
-    Index alignment is legitimate here because we *generated* the dub from the
-    reference, one utterance at a time -- we know how many there should be. A
-    count mismatch is therefore not something to paper over with fuzzy matching;
-    it is a finding in its own right, and it is returned as an anomaly.
+    Grouping by nearest reference rather than pairing by index, because a
+    spoken line is not always one voiced span. The French stem for Sintel S03
+    split "Terre de dragons, Sintel" across a 527 ms pause at the comma, and
+    index pairing then shifted every later line onto the wrong slot and
+    reported 6137 ms of drift for audio that was actually in tolerance.
+
+    Grouping is robust to that: however many spans a line breaks into, they
+    all land on the reference they are nearest to, and the line's onset is the
+    first of them. It cannot misalign the remainder of a scene because of one
+    breath.
+
+    A reference with NO speech near it is still an anomaly and still reported.
+    That is a real failure -- a line that was never spoken -- and it must not
+    be smoothed away by the same mechanism that tolerates a pause.
     """
+    if not reference:
+        raise ProbeError("no utterances to align")
+
+    groups: list[list[Interval]] = [[] for _ in reference]
+    for span in measured:
+        groups[_slot_for(span, reference)].append(span)
+
+    pairs: list[tuple[Interval, Interval]] = []
+    empty: list[int] = []
+    for index, (ref, spans) in enumerate(zip(reference, groups)):
+        if not spans:
+            empty.append(index)
+            continue
+        # The line spans from its first sound to its last, pauses included --
+        # which is what a viewer hears as the line.
+        pairs.append((ref, Interval(spans[0].start_ms, spans[-1].end_ms)))
+
     anomaly: str | None = None
-    if len(reference) != len(measured):
+    if empty:
         anomaly = (
-            f"utterance_count_mismatch: reference={len(reference)} "
-            f"measured={len(measured)}"
+            f"no_speech_for_utterances: {empty} "
+            f"(reference={len(reference)} measured={len(measured)})"
         )
-    pairs = list(zip(reference, measured))
     if not pairs:
         raise ProbeError("no utterances to align")
     return pairs, anomaly

@@ -78,10 +78,49 @@ def test_bad_dub_fails_and_reads_as_scattered_drift():
     assert result.margin < 0  # failing, and by how much
 
 
-def test_utterance_count_mismatch_is_reported_not_swallowed():
+def test_a_line_that_was_never_spoken_is_reported_not_swallowed():
+    """A reference slot with no speech anywhere near it is a real failure --
+    a line that never got recorded -- and the anomaly names which one."""
     m = sync_offset(REFERENCE, [Interval(500, 2000), Interval(3000, 5000)])
     assert m.detail["anomaly"] is not None
-    assert "utterance_count_mismatch" in m.detail["anomaly"]
+    assert "no_speech_for_utterances" in m.detail["anomaly"]
+    assert "[2]" in m.detail["anomaly"]
+
+
+def test_a_line_that_breaks_into_two_spans_is_not_an_anomaly():
+    """The case that motivated grouping. A speaker pausing at a comma splits
+    one line into two voiced spans; that is speech, not a missing line, and
+    treating it as a count mismatch misaligned every later line and reported
+    6137 ms of drift for French audio that was actually in tolerance."""
+    split = [
+        Interval(500, 1100), Interval(1300, 2000),   # one line, one comma
+        Interval(3000, 5000),
+        Interval(6500, 9000),
+    ]
+    m = sync_offset(REFERENCE, split)
+    assert m.detail["anomaly"] is None
+    assert m.detail["utterances"] == 3
+    assert m.value < 10.0
+
+
+def test_a_span_is_assigned_to_the_slot_it_sits_in_not_the_nearest_cue():
+    """Nearest-by-onset is the obvious rule and it is wrong: the tail of a
+    line can start closer to the NEXT cue than to its own while sitting
+    squarely inside its own slot."""
+    from media.qc.sync import _slot_for
+
+    reference = [Interval(0, 3000), Interval(4000, 7000)]
+    tail = Interval(2600, 2900)          # 2600 is nearer 4000's... no: nearer 0
+    assert _slot_for(tail, reference) == 0
+    # unambiguous: inside slot 1 but onset closer to slot 0's start
+    inside = Interval(4100, 6900)
+    assert _slot_for(inside, reference) == 1
+    # runs past its slot, overlapping nothing
+    spilled = Interval(7400, 7900)
+    assert _slot_for(spilled, reference) == 1
+    # before anything has started
+    early = Interval(-500, -100)
+    assert _slot_for(early, reference) == 0
 
 
 def test_speech_rate_excludes_silence():

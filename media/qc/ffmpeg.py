@@ -87,11 +87,24 @@ def voiced_intervals(
     noise_db: float = -35.0,
     min_silence_s: float = 0.15,
     min_utterance_ms: float = 120.0,
+    merge_gap_ms: float = 400.0,
 ) -> list[Interval]:
     """Speech spans -- the complement of the silences, within the file duration.
 
     `min_utterance_ms` discards clicks and breath artifacts that would otherwise
     be counted as utterances and corrupt the alignment in sync.py.
+
+    `merge_gap_ms` rejoins spans separated by less than a spoken line's internal
+    pause. A speaker breathing mid-sentence is not a line boundary, and without
+    this the French stem for Sintel S03 split "J'ai ... echoue" across a 159 ms
+    gap and presented four lines as six -- which misaligned every subsequent
+    utterance and produced a 6137 ms sync reading for audio that was actually
+    within tolerance.
+    
+    400 ms sits well clear of both sides for dialogue: intra-line pauses run to
+    roughly 300 ms, while the gaps between lines in this material are seconds.
+    A denser scene would need it lowered, and the count-mismatch anomaly in
+    sync.py is what surfaces that rather than letting it pass silently.
     """
     total = duration_ms(path)
     silences = silence_intervals(path, noise_db, min_silence_s)
@@ -108,7 +121,14 @@ def voiced_intervals(
     if cursor < total:
         voiced.append(Interval(cursor, total))
 
-    return [v for v in voiced if v.duration_ms >= min_utterance_ms]
+    merged: list[Interval] = []
+    for span in voiced:
+        if merged and span.start_ms - merged[-1].end_ms < merge_gap_ms:
+            merged[-1] = Interval(merged[-1].start_ms, span.end_ms)
+        else:
+            merged.append(span)
+
+    return [v for v in merged if v.duration_ms >= min_utterance_ms]
 
 
 def loudness(path: Path) -> dict[str, float]:
