@@ -12,6 +12,12 @@ Prometheus. It publishes three kinds of fact:
 
   thresholds     what each market demands (from the versioned profiles)
   measurements   what each asset actually measures (from its QC report)
+  diagnostics    what explains those measurements -- whether drift is
+                 systematic, how far the worst line overran, how many lines
+                 did. Nothing in the recording rules joins these and nothing
+                 should: they explain a failure rather than constituting one.
+                 They are published anyway so the agent reasons from facts a
+                 human can also see on a dashboard.
   staleness      whether each asset's recorded parent hash still matches
 
 Staleness is computed here rather than stored, because it is a pure function of
@@ -38,7 +44,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from media.qc.report import QCStore  # noqa: E402
 from media.store import Store  # noqa: E402
 from telemetry.exporters.thresholds import publish as publish_thresholds  # noqa: E402
-from telemetry.metrics import MEASUREMENT_SERIES, Instruments  # noqa: E402
+from telemetry.metrics import (  # noqa: E402
+    DIAGNOSTIC_SERIES,
+    MEASUREMENT_SERIES,
+    REPORT_DIAGNOSTIC_SERIES,
+    Instruments,
+    record_diagnostics,
+)
 from telemetry.otel import setup, shutdown  # noqa: E402
 
 log = logging.getLogger("continuity.state")
@@ -58,12 +70,13 @@ class Cycle:
     assets: int = 0
     stale: int = 0
     unmeasured: int = 0
+    diagnostics: int = 0
 
     def describe(self) -> str:
         return (
-            f"{self.thresholds} thresholds, {self.measurements} measurements "
-            f"across {self.assets} assets ({self.stale} stale, "
-            f"{self.unmeasured} unmeasured)"
+            f"{self.thresholds} thresholds, {self.measurements} measurements, "
+            f"{self.diagnostics} diagnostics across {self.assets} assets "
+            f"({self.stale} stale, {self.unmeasured} unmeasured)"
         )
 
 
@@ -96,6 +109,10 @@ def publish_once(
             log.debug("no QC report for %s (%s)", asset.id, asset.sha256[:12])
             continue
 
+        labels = {
+            "title": asset.title_id, "scene": asset.scene_id,
+            "market": asset.market,
+        }
         for measurement in report.measurements:
             if measurement.key not in MEASUREMENT_SERIES:
                 continue
@@ -104,6 +121,17 @@ def publish_once(
                 market=asset.market,
             )
             cycle.measurements += 1
+            # Diagnostics ride along with the measurement that produced them.
+            # Nothing in the recording rules joins these, and nothing should --
+            # they explain a failure rather than constituting one -- but the
+            # agent has to reason from facts a human can also see.
+            cycle.diagnostics += record_diagnostics(
+                instruments, measurement.detail, DIAGNOSTIC_SERIES, labels
+            )
+
+        cycle.diagnostics += record_diagnostics(
+            instruments, report.detail, REPORT_DIAGNOSTIC_SERIES, labels
+        )
 
     return cycle
 

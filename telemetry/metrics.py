@@ -128,3 +128,69 @@ class Instruments:
         self.counter(
             REPAIRS, "Repair attempts by strategy and verified outcome"
         ).add(1, {"strategy": strategy, "outcome": outcome, "market": market})
+
+
+# ---- diagnostics ----------------------------------------------------------
+# Signals that explain a failure without themselves being pass/fail criteria.
+#
+# They are kept strictly apart from MEASUREMENT_SERIES because nothing joins
+# them in the recording rules and nothing should: "is the drift systematic" is
+# not a requirement a market can fail, it is the fact that decides WHICH repair
+# could possibly work. Publishing them anyway matters because it keeps the
+# agent reasoning from facts that are in Grafana, visible on a dashboard and
+# checkable by a human, rather than from a detail dict only it can see.
+#
+# Adding one here has no effect on market_required_checks, so the coverage gate
+# is unaffected by diagnostic depth.
+
+DRIFT_SYSTEMATIC = "dub_drift_systematic"
+SYNC_P95 = "dub_sync_p95_ms"
+END_OVERHANG = "dub_end_overhang_ms"
+UTTERANCES = "dub_utterances"
+WORST_OVERRUN = "dub_worst_overrun_ms"
+OVERRUNNING_LINES = "dub_overrunning_lines"
+
+# Key inside a Measurement.detail -> series name.
+DIAGNOSTIC_SERIES: dict[str, str] = {
+    "drift_is_systematic": DRIFT_SYSTEMATIC,
+    "p95_onset_ms": SYNC_P95,
+    "max_end_overhang_ms": END_OVERHANG,
+    "utterances": UTTERANCES,
+}
+
+# Key inside a QCReport.detail -> series name.
+REPORT_DIAGNOSTIC_SERIES: dict[str, str] = {
+    "worst_overrun_ms": WORST_OVERRUN,
+    "overrunning_lines": OVERRUNNING_LINES,
+}
+
+
+def _numeric(value: Any) -> float | None:
+    """Coerce a diagnostic to a number, or decline.
+
+    Booleans become 1/0 and lists become their length, because "which lines
+    overran" is a list on disk and "how many overran" is what a time series can
+    carry. Anything else -- a string, a nested dict -- is skipped rather than
+    stringified into a label, which is how cardinality explodes.
+    """
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, (list, tuple, set)):
+        return float(len(value))
+    return None
+
+
+def record_diagnostics(instruments: "Instruments", detail: dict, mapping: dict,
+                    labels: dict) -> int:
+    published = 0
+    for key, series in mapping.items():
+        if key not in detail:
+            continue
+        value = _numeric(detail[key])
+        if value is None:
+            continue
+        instruments.gauge(series, f"diagnostic: {key}").set(value, labels)
+        published += 1
+    return published
