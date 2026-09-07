@@ -52,6 +52,14 @@ TECHNICAL_CHECKS = (
 )
 MARKET_CHECKS = ("rights_cleared", "deliverables_complete")
 
+# Checks a market owes only if it asks for the deliverable they judge. The
+# recording rules evaluate them for everyone -- a rule cannot be conditional --
+# but coverage counts them only where they apply, so a market with no audio
+# description obligation is neither excused nor penalised.
+CONDITIONAL_CHECKS: dict[str, str] = {
+    "ad_collision": "AUDIO_DESCRIPTION",
+}
+
 REQUIRED_CHECKS: dict[str, tuple[str, ...]] = {
     "dub_sync": ("delivery.sync_tolerance_ms",),
     "line_overrun": ("delivery.line_overrun_max_ms",),
@@ -112,8 +120,11 @@ def required_checks(profile: dict) -> list[str]:
     # is judged on whether the track it has actually stays out of the dialogue.
     # Coverage that ignored the condition would either excuse France or
     # penalise Brazil, and both would be wrong.
-    if "AUDIO_DESCRIPTION" in profile.get("requires", []):
-        checks.append("ad_collision")
+    required = profile.get("requires", [])
+    checks += [
+        check for check, deliverable in CONDITIONAL_CHECKS.items()
+        if deliverable in required
+    ]
     return checks
 
 

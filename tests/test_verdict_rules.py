@@ -136,16 +136,38 @@ def test_coverage_counts_exactly_the_checks_the_rules_evaluate():
     one check short. This test is what stops that."""
     import re
 
-    from telemetry.exporters.thresholds import REQUIRED_CHECKS
+    from telemetry.exporters.thresholds import CONDITIONAL_CHECKS, REQUIRED_CHECKS
 
     rules_text = (RULES / "recording.yaml").read_text(encoding="utf-8")
     # the `requirement:` label attached to each scene_requirement_met rule
     evaluated = set(re.findall(r"^\s+requirement:\s*(\S+)\s*$", rules_text, re.M))
     assert evaluated, "no requirement labels found; did the rules change shape?"
-    assert evaluated == set(REQUIRED_CHECKS), (
+    # A rule cannot be conditional, so the rules evaluate every scene-level
+    # check for everyone; coverage is where the condition is applied.
+    countable = set(REQUIRED_CHECKS) | set(CONDITIONAL_CHECKS)
+    assert evaluated == countable, (
         f"rules evaluate {sorted(evaluated)} but coverage counts "
-        f"{sorted(REQUIRED_CHECKS)}"
+        f"{sorted(countable)}"
     )
+
+
+def test_a_conditional_check_is_counted_only_where_it_applies():
+    """Counting audio description everywhere would penalise markets that never
+    asked for it; counting it nowhere would excuse the ones that did."""
+    from media.qc.profiles import load_profiles
+    from telemetry.exporters.thresholds import CONDITIONAL_CHECKS, required_checks
+
+    profiles = load_profiles()
+    for check, deliverable in CONDITIONAL_CHECKS.items():
+        wanted = {m for m, p in profiles.items()
+                  if deliverable in p.get("requires", [])}
+        judged = {m for m, p in profiles.items()
+                  if check in required_checks(p)}
+        assert wanted == judged, (
+            f"{check} is owed by {sorted(wanted)} but counted for "
+            f"{sorted(judged)}"
+        )
+        assert wanted, f"no market requires {deliverable}; the check is dead"
 
 
 def test_every_market_owes_the_full_set_of_checks():
