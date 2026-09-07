@@ -128,6 +128,48 @@ def speech_rate_wpm(measured: list[Interval], word_count: int) -> Measurement:
     )
 
 
+def line_overrun(
+    reference: list[Interval], measured: list[Interval]
+) -> Measurement:
+    """How far the worst line runs PAST the end of its slot, in milliseconds.
+
+    A separate failure from onset drift, and the reason this probe exists:
+    running the real pipeline on Sintel S03 produced a stem whose onsets were
+    all exactly right -- the gaps between cues were long enough to absorb the
+    overrun -- while two of four German lines were still being spoken after
+    the picture had moved on. `sync_offset` reported 0 ms and was correct;
+    it simply does not measure this.
+
+    Onset drift says the stem is MISTIMED, which a shift can fix. Overrun says
+    the lines are TOO LONG, which only a shorter line can fix. Measuring both
+    is what lets the agent tell the symptom from the cause instead of
+    inferring one from the shape of the other.
+
+    Negative means every line finishes inside its slot. Reported rather than
+    clamped, because "how much room was left" is useful to an adaptor.
+    """
+    pairs, anomaly = align(reference, measured)
+    overhangs = [m.end_ms - r.end_ms for r, m in pairs]
+    worst = max(overhangs)
+    worst_idx = overhangs.index(worst)
+
+    return Measurement(
+        key="delivery.line_overrun_ms",
+        value=round(worst, 1),
+        unit="ms",
+        method=METHOD,
+        detail={
+            "utterances": len(pairs),
+            "overrunning_lines": sum(1 for o in overhangs if o > 0),
+            "worst_line_index": worst_idx,
+            "worst_line_ref": repr(pairs[worst_idx][0]),
+            "worst_line_dub": repr(pairs[worst_idx][1]),
+            "per_line_overrun_ms": [round(o, 1) for o in overhangs],
+            "anomaly": anomaly,
+        },
+    )
+
+
 def measure_dub(
     dub_path: Path,
     reference: list[Interval],
@@ -138,5 +180,6 @@ def measure_dub(
     measured = voiced_intervals(dub_path, noise_db=noise_db)
     return [
         sync_offset(reference, measured),
+        line_overrun(reference, measured),
         speech_rate_wpm(measured, word_count),
     ]

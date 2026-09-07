@@ -215,7 +215,7 @@ tests:
     name: a passing measurement with missing siblings does not ship
     input_series:
       - series: 'market_required_checks{market="ja-JP"}'
-        values: '6x10'
+        values: '7x10'
       - series: 'market_threshold{market="ja-JP",requirement="dub_sync_max_ms"}'
         values: '120x10'
       - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="ja-JP"}'
@@ -229,7 +229,7 @@ tests:
         exp_samples:
           - labels: 'market_requirements_all_met{market="ja-JP",title="SINTEL"}'
             value: 1
-      # ... but only 1 of the 6 owed checks is present ...
+      # ... but only 1 of the 7 owed checks is present ...
       - expr: market_coverage_complete
         eval_time: 3m
         exp_samples:
@@ -266,12 +266,14 @@ tests:
   # and not one that can never be satisfied.
   # ------------------------------------------------------------------
   - interval: 30s
-    name: all six checks present and passing -> ready
+    name: all seven checks present and passing -> ready
     input_series:
       - series: 'market_required_checks{market="fr-FR"}'
-        values: '6x10'
+        values: '7x10'
       - series: 'market_threshold{market="fr-FR",requirement="dub_sync_max_ms"}'
         values: '120x10'
+      - series: 'market_threshold{market="fr-FR",requirement="line_overrun_max_ms"}'
+        values: '200x10'
       - series: 'market_threshold{market="fr-FR",requirement="subtitle_max_cps"}'
         values: '17x10'
       - series: 'market_threshold{market="fr-FR",requirement="true_peak_max_dbtp"}'
@@ -286,6 +288,8 @@ tests:
         values: '1x10'
       - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="fr-FR"}'
         values: '41x10'
+      - series: 'dub_line_overrun_ms{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '-120x10'
       - series: 'subtitle_reading_rate_cps{title="SINTEL",scene="S01",market="fr-FR"}'
         values: '14.2x10'
       - series: 'audio_true_peak_dbtp{title="SINTEL",scene="S01",market="fr-FR"}'
@@ -303,9 +307,50 @@ tests:
         eval_time: 3m
         exp_samples:
           - labels: 'market_checks_present{market="fr-FR",title="SINTEL"}'
-            value: 6
+            value: 7
       - expr: market_release_ready
         eval_time: 3m
         exp_samples:
           - labels: 'market_release_ready{market="fr-FR",title="SINTEL"}'
             value: 1
+
+  # ------------------------------------------------------------------
+  # The failure onset drift cannot see. Found by running the real
+  # pipeline on Sintel S03: every onset landed exactly right because the
+  # gaps between cues absorbed the overrun, while two of four German
+  # lines were still being spoken over the next shot.
+  #
+  # Drift says the stem is mistimed and a shift fixes it. Overrun says
+  # the lines are too long and only a shorter line fixes it.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: perfect onsets do not excuse lines that run past their slot
+    input_series:
+      - series: 'market_required_checks{market="de-DE"}'
+        values: '2x10'
+      - series: 'market_threshold{market="de-DE",requirement="dub_sync_max_ms"}'
+        values: '120x10'
+      - series: 'market_threshold{market="de-DE",requirement="line_overrun_max_ms"}'
+        values: '200x10'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S03",market="de-DE"}'
+        values: '0x10'
+      - series: 'dub_line_overrun_ms{title="SINTEL",scene="S03",market="de-DE"}'
+        values: '260x10'
+      - series: 'asset_stale{title="SINTEL",scene="S03",market="de-DE"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: scene_requirement_met{requirement="dub_sync"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'scene_requirement_met{market="de-DE",requirement="dub_sync",scene="S03",title="SINTEL"}'
+            value: 1
+      - expr: scene_requirement_met{requirement="line_overrun"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'scene_requirement_met{market="de-DE",requirement="line_overrun",scene="S03",title="SINTEL"}'
+            value: 0
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="de-DE",title="SINTEL"}'
+            value: 0

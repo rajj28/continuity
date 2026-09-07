@@ -251,6 +251,7 @@ class Signal:
 # evidence rather than raise.
 _THRESHOLD_FOR = {
     "dub_sync": "dub_sync_max_ms",
+    "line_overrun": "line_overrun_max_ms",
     "subtitle_rate": "subtitle_max_cps",
     "true_peak": "true_peak_max_dbtp",
     "speech_rate": "speech_rate_max_wpm",

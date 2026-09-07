@@ -42,6 +42,7 @@ COVERAGE_METRIC = "market_required_checks"
 # missing measurement blocks exactly as a failing one does.
 REQUIRED_CHECKS: dict[str, tuple[str, ...]] = {
     "dub_sync": ("delivery.sync_tolerance_ms",),
+    "line_overrun": ("delivery.line_overrun_max_ms",),
     "subtitle_rate": ("delivery.subtitle_max_cps",),
     "true_peak": ("delivery.true_peak_max_dbtp",),
     "speech_rate": ("quality.speech_rate_max_wpm",),
@@ -53,6 +54,7 @@ REQUIRED_CHECKS: dict[str, tuple[str, ...]] = {
 # Keys are dotted paths into a MarketProfile.
 PUBLISHED: dict[str, str] = {
     "delivery.sync_tolerance_ms": "dub_sync_max_ms",
+    "delivery.line_overrun_max_ms": "line_overrun_max_ms",
     "delivery.subtitle_max_cps": "subtitle_max_cps",
     "delivery.subtitle_min_duration_ms": "subtitle_min_duration_ms",
     "delivery.subtitle_max_lines": "subtitle_max_lines",

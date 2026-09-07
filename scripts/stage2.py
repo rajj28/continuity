@@ -74,8 +74,8 @@ def reference_intervals(scene: dict) -> list[Interval]:
     origin = scene["in_ms"]
     return [
         Interval(
-            start=(u["start_ms"] - origin) / 1000.0,
-            end=(u["end_ms"] - origin) / 1000.0,
+            start_ms=float(u["start_ms"] - origin),
+            end_ms=float(u["end_ms"] - origin),
         )
         for u in scene["utterances"]
     ]

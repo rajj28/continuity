@@ -100,6 +100,7 @@ def main() -> int:
     )
     store.record(dialogue)
 
+    out_path = args.work / "manifest.json"
     cues = load_dialogue(args.dialogue)
     scenes = segment_scenes(cues, limit_ms=int(master.duration_ms or 0))
     print(f"dialogue {dl_sha[:16]}..  {len(cues)} cues -> {len(scenes)} scenes\n")
@@ -114,9 +115,25 @@ def main() -> int:
         "scenes": [],
     }
 
+    # Cutting one scene must not erase the record of scenes cut earlier. The
+    # store still holds them -- the index is per asset -- but a manifest that
+    # forgot them would send stage 2 looking for a scene_audio that is right
+    # there on disk. So previously recorded assets are carried forward, and a
+    # fresh cut overwrites its own entry.
+    previous: dict[str, dict] = {}
+    if out_path.exists():
+        try:
+            for old in json.loads(out_path.read_text(encoding="utf-8"))["scenes"]:
+                if old.get("assets"):
+                    previous[old["id"]] = old["assets"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass  # an unreadable manifest is simply rebuilt
+
     for scene in scenes:
         entry = scene.to_dict()
         wanted = args.scene is None or args.scene == scene.id
+        if not wanted and scene.id in previous:
+            entry["assets"] = previous[scene.id]
 
         if wanted:
             video, audio = cut_scene(args.master, scene, args.work)

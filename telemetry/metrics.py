@@ -36,6 +36,7 @@ from opentelemetry import metrics
 # ---- canonical series names ----------------------------------------------
 
 SYNC_OFFSET = "dub_sync_offset_ms"
+LINE_OVERRUN = "dub_line_overrun_ms"
 SPEECH_RATE = "speech_rate_wpm"
 SUBTITLE_RATE = "subtitle_reading_rate_cps"
 LOUDNESS = "audio_loudness_lufs"
@@ -56,6 +57,7 @@ ASSETS_REGENERATED = "continuity_assets_regenerated_total"
 # hard error, so a measurement can never be silently unexported.
 MEASUREMENT_SERIES: dict[str, str] = {
     "delivery.dub_sync_offset_ms": SYNC_OFFSET,
+    "delivery.line_overrun_ms": LINE_OVERRUN,
     "delivery.subtitle_reading_rate_cps": SUBTITLE_RATE,
     "delivery.audio_loudness_lufs": LOUDNESS,
     "delivery.audio_true_peak_dbtp": TRUE_PEAK,
@@ -153,6 +155,7 @@ OVERRUNNING_LINES = "dub_overrunning_lines"
 # Key inside a Measurement.detail -> series name.
 DIAGNOSTIC_SERIES: dict[str, str] = {
     "drift_is_systematic": DRIFT_SYSTEMATIC,
+    "overrunning_lines": OVERRUNNING_LINES,
     "p95_onset_ms": SYNC_P95,
     "max_end_overhang_ms": END_OVERHANG,
     "utterances": UTTERANCES,

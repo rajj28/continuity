@@ -31,7 +31,13 @@ from media.qc.types import ProbeError
 
 log = logging.getLogger("continuity.tts")
 
-MODEL = "gemini-2.5-flash-preview-tts"
+# gemini-3.1-flash-tts-preview rather than 2.5, because the free tier's
+# per-day quota is per model family and 2.5-flash-tts and 2.5-pro-tts share a
+# bucket while 3.1 has its own. Measured on 7 September 2026: with the 2.5
+# bucket exhausted, 3.1 answered normally. That is a different model with its
+# own published limit, not a way around a limit.
+MODEL = "gemini-3.1-flash-tts-preview"
+FALLBACK_MODEL = "gemini-2.5-flash-preview-tts"
 
 # One prebuilt voice per market, fixed so a re-run of the demo sounds the same
 # and so a repair does not change the performer mid-scene -- which would be a

@@ -33,6 +33,19 @@ groups:
         labels:
           requirement: dub_sync
 
+      # A distinct failure from onset drift, and one the drift probe cannot
+      # see: when the gaps between cues are long enough to absorb an overrun,
+      # every onset lands exactly right while the line is still being spoken
+      # over the next shot. Drift says the stem is mistimed; overrun says the
+      # lines are too long. Only the second can be fixed by rewriting.
+      - record: scene_requirement_met
+        expr: |
+          dub_line_overrun_ms
+            <= bool on (market) group_left ()
+          market_threshold{requirement="line_overrun_max_ms"}
+        labels:
+          requirement: line_overrun
+
       - record: scene_requirement_met
         expr: |
           subtitle_reading_rate_cps
