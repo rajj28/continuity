@@ -39,7 +39,15 @@
       },
       "rights_required": [
         "MUSIC_CUE_SYNC"
-      ]
+      ],
+      "technical": {
+        "video_height": 544,
+        "video_codec": "h264",
+        "pixel_format": "yuv420p",
+        "frame_rate": 24,
+        "audio_sample_rate": 48000,
+        "audio_channels": 2
+      }
     },
     "de-DE": {
       "name": "Germany",
@@ -73,7 +81,15 @@
       },
       "rights_required": [
         "MUSIC_CUE_SYNC"
-      ]
+      ],
+      "technical": {
+        "video_height": 544,
+        "video_codec": "h264",
+        "pixel_format": "yuv420p",
+        "frame_rate": 24,
+        "audio_sample_rate": 48000,
+        "audio_channels": 2
+      }
     },
     "pt-BR": {
       "name": "Brazil",
@@ -104,7 +120,15 @@
       },
       "rights_required": [
         "MUSIC_CUE_SYNC"
-      ]
+      ],
+      "technical": {
+        "video_height": 544,
+        "video_codec": "h264",
+        "pixel_format": "yuv420p",
+        "frame_rate": 24,
+        "audio_sample_rate": 48000,
+        "audio_channels": 2
+      }
     },
     "hi-IN": {
       "name": "India",
@@ -135,7 +159,15 @@
       },
       "rights_required": [
         "MUSIC_CUE_SYNC"
-      ]
+      ],
+      "technical": {
+        "video_height": 544,
+        "video_codec": "h264",
+        "pixel_format": "yuv420p",
+        "frame_rate": 24,
+        "audio_sample_rate": 48000,
+        "audio_channels": 2
+      }
     },
     "ja-JP": {
       "name": "Japan",
@@ -173,7 +205,16 @@
       "rights_required": [
         "MUSIC_CUE_SYNC",
         "STOCK_FOOTAGE"
-      ]
+      ],
+      "technical": {
+        "video_height": 544,
+        "video_codec": "h264",
+        "pixel_format": "yuv420p",
+        "frame_rate": 24,
+        "audio_sample_rate": 48000,
+        "audio_channels": 6,
+        "_note": "Premium VOD in Japan requires a 5.1 configuration. The Sintel master is stereo, so this is not a defect to repair -- it is a deliverable that does not exist, and no filter can honestly manufacture one."
+      }
     }
   }
 }

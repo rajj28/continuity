@@ -157,8 +157,35 @@ def test_every_market_owes_the_full_set_of_checks():
     from telemetry.exporters.thresholds import REQUIRED_CHECKS, required_checks
 
     for market, profile in load_profiles().items():
-        owed = required_checks(profile)
-        assert set(owed) == set(REQUIRED_CHECKS), (
+        owed = set(required_checks(profile))
+        assert set(REQUIRED_CHECKS) <= owed, (
             f"{market} cannot be judged on "
-            f"{sorted(set(REQUIRED_CHECKS) - set(owed))}"
+            f"{sorted(set(REQUIRED_CHECKS) - owed)}"
         )
+
+
+def test_a_release_is_judged_on_more_than_how_it_sounds():
+    """The scope check. "Can we release this here" is not a localisation
+    question with some extras bolted on -- rights, technical conformance and
+    package completeness block real releases far more often than a dub does,
+    and a market that measured only its audio would ship into a territory it
+    has no licence for."""
+    from media.qc.profiles import load_profiles
+    from telemetry.exporters.thresholds import MARKET_CHECKS, required_checks
+
+    dimensions = {
+        "localisation": {"dub_sync", "line_overrun", "speech_rate",
+                         "semantic_fidelity"},
+        "audio_delivery": {"loudness", "true_peak"},
+        "timed_text": {"subtitle_rate"},
+        "technical": {"tech_video_height", "tech_frame_rate",
+                      "tech_audio_channels", "tech_video_codec"},
+        "rights_and_packaging": set(MARKET_CHECKS),
+    }
+    for market, profile in load_profiles().items():
+        owed = set(required_checks(profile))
+        for dimension, checks in dimensions.items():
+            assert checks <= owed, (
+                f"{market} is not judged on {dimension}: missing "
+                f"{sorted(checks - owed)}"
+            )

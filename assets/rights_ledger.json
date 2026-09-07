@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Rights granted for SINTEL derivatives, by right and territory.",
+    "",
+    "Sintel is CC BY 3.0, so the underlying work is cleared worldwide in",
+    "perpetuity -- that grant is real and is recorded as such. The music-cue",
+    "and stock-footage entries model the per-territory, windowed clearances a",
+    "commercial title actually carries, which is the shape this system has to",
+    "reason about. They are declared here rather than asserted anywhere in",
+    "code, and this file is reviewable in a diff.",
+    "",
+    "See assets/SOURCES.md for the underlying licence."
+  ],
+  "title_id": "SINTEL",
+  "grants": [
+    {
+      "right": "UNDERLYING_WORK",
+      "territories": ["WORLD"],
+      "note": "Creative Commons Attribution 3.0, Blender Foundation. No expiry."
+    },
+    {
+      "right": "MUSIC_CUE_SYNC",
+      "territories": ["fr-FR", "de-DE", "pt-BR", "hi-IN"],
+      "note": "Jan Morgenstern score, cleared under the same CC BY 3.0 grant. Japan pending a local collecting-society registration."
+    },
+    {
+      "right": "STOCK_FOOTAGE",
+      "territories": ["WORLD"],
+      "starts": "2026-09-15",
+      "note": "Window opens 15 September 2026."
+    },
+    {
+      "right": "SDH_CAPTIONS",
+      "territories": ["WORLD"],
+      "note": "Accessibility deliverable; no third-party right attaches."
+    }
+  ]
+}

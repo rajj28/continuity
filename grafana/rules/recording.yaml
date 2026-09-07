@@ -99,6 +99,24 @@ groups:
       - record: market_requirement_met
         expr: min by (title, market, requirement) (scene_requirement_met)
 
+      # The market-level checks -- technical conformance, rights clearance,
+      # deliverable completeness -- arrive as a pushed `market_check_met`
+      # rather than from scenes, because that is what they are: a right is
+      # granted to a territory and not to a shot, and a frame rate is a
+      # property of the master every scene was cut from.
+      #
+      # They are normalised into the SAME series as the scene rollup. Their
+      # `requirement` labels are disjoint, so there is no collision, and
+      # everything downstream -- the rollup, the coverage count, the verdict --
+      # then treats "the rights are not cleared" and "the dub is out of sync"
+      # as what they both are: reasons this market cannot ship.
+      #
+      # The aggregation also strips the exporter's job/instance labels, without
+      # which two exporter replicas would each contribute a series and the
+      # coverage count would read double.
+      - record: market_requirement_met
+        expr: min by (title, market, requirement) (market_check_met)
+
       - record: market_requirements_all_met
         expr: min by (title, market) (market_requirement_met)
 

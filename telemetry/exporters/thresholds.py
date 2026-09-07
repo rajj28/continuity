@@ -40,6 +40,18 @@ COVERAGE_METRIC = "market_required_checks"
 # checked for sync. Publishing the number of checks a market OWES lets the
 # verdict demand that the count present equals the count required, so a
 # missing measurement blocks exactly as a failing one does.
+# The market-level checks published by scripts/release_check.py. Not derived
+# from thresholds -- there is no numeric bar for "are the rights cleared" --
+# but they are still checks a market owes, so they count toward coverage
+# exactly as the scene-level ones do. Technical requirements are counted from
+# what the market's spec actually declares, so a market that states no frame
+# rate is not marked down for failing to be measured against one.
+TECHNICAL_CHECKS = (
+    "video_height", "frame_rate", "audio_channels",
+    "audio_sample_rate", "video_codec", "pixel_format",
+)
+MARKET_CHECKS = ("rights_cleared", "deliverables_complete")
+
 REQUIRED_CHECKS: dict[str, tuple[str, ...]] = {
     "dub_sync": ("delivery.sync_tolerance_ms",),
     "line_overrun": ("delivery.line_overrun_max_ms",),
@@ -82,8 +94,19 @@ def _has(profile: dict, paths: tuple[str, ...]) -> bool:
 
 
 def required_checks(profile: dict) -> list[str]:
-    """The requirements this market can be judged on, given its profile."""
-    return [name for name, paths in REQUIRED_CHECKS.items() if _has(profile, paths)]
+    """Every requirement this market owes, scene-level and market-level.
+
+    Both kinds land in the same `market_requirement_met` series -- one written
+    by a recording rule rolling up scenes, the other by a rule normalising the
+    pushed market-level checks -- so coverage is one count over one series and
+    a missing rights evaluation blocks exactly as a missing sync measurement
+    does.
+    """
+    checks = [name for name, paths in REQUIRED_CHECKS.items() if _has(profile, paths)]
+    spec = profile.get("technical", {})
+    checks += [f"tech_{name}" for name in TECHNICAL_CHECKS if name in spec]
+    checks += list(MARKET_CHECKS)
+    return checks
 
 
 def publish(instruments: Instruments) -> int:
