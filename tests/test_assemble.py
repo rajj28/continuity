@@ -11,15 +11,15 @@ from __future__ import annotations
 import pytest
 
 from media.dub.assemble import Policy, Stem, assemble, place
-from media.dub.live_translate import DubSegment
-from media.qc.ffmpeg import LIVE_OUTPUT_RATE
+from media.dub.segment import DubSegment
+from media.dub.segment import TTS_RATE
 
 
 def segment(index: int, *, spoken_ms: float, slot_ms: float, cue_ms: float,
             level: int = 0) -> DubSegment:
     """A line of a known length, at a known cue. `level` fills the buffer with
     a constant sample so overlap is visible in the output bytes."""
-    samples = int(round(spoken_ms / 1000 * LIVE_OUTPUT_RATE))
+    samples = int(round(spoken_ms / 1000 * TTS_RATE))
     pcm = level.to_bytes(2, "little", signed=True) * samples
     return DubSegment(
         index=index, pcm=pcm, reference_ms=slot_ms, reference_start_ms=cue_ms
@@ -27,7 +27,7 @@ def segment(index: int, *, spoken_ms: float, slot_ms: float, cue_ms: float,
 
 
 def read(stem: Stem, ms: float) -> int:
-    i = int(round(ms / 1000 * LIVE_OUTPUT_RATE)) * 2
+    i = int(round(ms / 1000 * TTS_RATE)) * 2
     return int.from_bytes(stem.pcm[i:i + 2], "little", signed=True)
 
 

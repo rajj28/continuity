@@ -34,8 +34,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from media.dub.assemble import Policy, assemble  # noqa: E402
-from media.dub.live_translate import translate_utterances  # noqa: E402
-from media.qc.ffmpeg import LIVE_OUTPUT_RATE, write_wav  # noqa: E402
+from media.dub.segment import TTS_RATE  # noqa: E402
+from media.dub.tts import BUILD_ATTEMPTS, audio_cache, dub_scene  # noqa: E402
+from media.dub.translate import text_cache  # noqa: E402
+from media.qc.ffmpeg import write_wav  # noqa: E402
 from media.qc.loudness import measure_loudness  # noqa: E402
 from media.qc.report import QCReport, QCStore  # noqa: E402
 from media.qc.sync import measure_dub  # noqa: E402
@@ -90,6 +92,9 @@ def main() -> int:
                         choices=[p.value for p in Policy])
     parser.add_argument("--gap-ms", type=float, default=0.0,
                         help="minimum silence between lines under SEQUENTIAL")
+    parser.add_argument("--attempts", type=int, default=BUILD_ATTEMPTS,
+                        help="adaptation attempts per line. 1 is a first-pass "
+                             "build; raising it is the REWRITE repair")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -123,22 +128,38 @@ def main() -> int:
                    "continuity.dub.lines": len(scene["utterances"])},
         ) as root:
             # ---- synthesise ------------------------------------------------
-            spans = [(u["start_ms"], u["end_ms"]) for u in scene["utterances"]]
-            log.info("translating %d lines into %s", len(spans), market)
-            # The key is passed rather than read inside the dubbing module:
-            # media/ has no business reaching into .env.local, and in Cloud Run
-            # it arrives as a real environment variable anyway.
-            segments = translate_utterances(
-                source, spans, market=market,
-                api_key=load_env().get("GEMINI_API_KEY", ""),
+            log.info("translating %d lines into %s (%d attempt(s) each)",
+                     len(scene["utterances"]), market, args.attempts)
+            # The client is built here rather than inside media/dub: that
+            # package has no business reaching into .env.local, and in Cloud
+            # Run the key arrives as a real environment variable anyway.
+            from google import genai
+            key = load_env().get("GEMINI_API_KEY", "")
+            if not key:
+                raise SystemExit(
+                    "no GEMINI_API_KEY in .env.local. Create one at "
+                    "https://aistudio.google.com/apikey -- the Gemini API free "
+                    "tier needs no Cloud Billing."
+                )
+            # The free tier allows ten TTS calls per project per day and a
+            # scene needs twelve, so the caches are what make a run resumable
+            # rather than a gamble on finishing before the quota does.
+            audio = audio_cache(Path(args.store))
+            lines = text_cache(Path(args.store))
+            segments = dub_scene(
+                genai.Client(api_key=key), scene["utterances"],
+                market=market, origin_ms=scene["in_ms"],
+                max_attempts=args.attempts, cache=audio, lines=lines,
             )
+            log.info("cache -- audio: %s | lines: %s",
+                     audio.summary, lines.summary)
 
             line_parents: list[ParentRef] = []
             for segment in segments:
                 pcm_path = write_wav(
                     segment.pcm,
                     out_dir / f"{args.scene}_line{segment.index:02d}.wav",
-                    rate=LIVE_OUTPUT_RATE,
+                    rate=TTS_RATE,
                 )
                 sha, _ = store.put_file(pcm_path)
                 asset_id = (

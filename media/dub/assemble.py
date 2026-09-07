@@ -3,10 +3,10 @@
 This file decides what kind of defect the pipeline produces, so it is worth
 being explicit rather than treating it as plumbing.
 
-Live Translate returns natural speech. It does not know a line has to land
-inside a 1.8-second hole in the picture, and it frequently overruns. What that
-overrun *looks like* in the finished stem depends entirely on the mux policy,
-and both real policies are implemented here:
+A first-pass translation is faithful, not short. German against English runs
+about 1.2x, so a line written for a 1.8-second hole in the picture frequently
+does not fit one. What that overrun *looks like* in the finished stem depends
+entirely on the mux policy, and both real policies are implemented here:
 
   CUE         every line starts at its cue, exactly as written. Overruns bleed
               over the next line. Onsets are correct by construction, so an
@@ -35,9 +35,10 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from media.qc.ffmpeg import LIVE_OUTPUT_RATE, pcm_duration_ms, write_wav
+from media.dub.segment import TTS_RATE, pcm_duration_ms
+from media.qc.ffmpeg import write_wav
 
-from .live_translate import DubSegment
+from .segment import DubSegment
 
 BYTES_PER_SAMPLE = 2
 
@@ -73,7 +74,7 @@ class Stem:
     pcm: bytes
     placements: list[Placement]
     policy: Policy
-    rate: int = LIVE_OUTPUT_RATE
+    rate: int = TTS_RATE
 
     @property
     def duration_ms(self) -> float:
@@ -141,7 +142,7 @@ def assemble(
     policy: Policy = Policy.SEQUENTIAL,
     min_gap_ms: float = 0.0,
     total_ms: float | None = None,
-    rate: int = LIVE_OUTPUT_RATE,
+    rate: int = TTS_RATE,
 ) -> Stem:
     """Mix the lines onto one silent timeline.
 
