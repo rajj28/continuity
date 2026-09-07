@@ -137,3 +137,60 @@ def loudness(path: Path) -> dict[str, float]:
         }
     except (json.JSONDecodeError, KeyError, ValueError) as exc:
         raise ProbeError(f"malformed loudnorm JSON for {path.name}: {exc}") from exc
+
+
+# ---- PCM interchange ------------------------------------------------------
+# The Gemini Live API speaks raw little-endian signed 16-bit PCM: 16 kHz mono
+# in, 24 kHz mono out. Nothing negotiates that, so the conversion lives here
+# next to the other ffmpeg calls rather than being inlined at the call site.
+
+LIVE_INPUT_RATE = 16_000
+LIVE_OUTPUT_RATE = 24_000
+
+
+def pcm_s16le(
+    path: Path,
+    *,
+    rate: int = LIVE_INPUT_RATE,
+    start_ms: float | None = None,
+    duration_ms_: float | None = None,
+) -> bytes:
+    """Decode (a span of) an audio file to raw mono s16le PCM.
+
+    `-ss` before `-i` seeks the input, which for a WAV is sample-accurate --
+    the concern that forced re-encoding when cutting scene video does not
+    apply to uncompressed audio.
+    """
+    args = [_require("ffmpeg"), "-v", "error"]
+    if start_ms is not None:
+        args += ["-ss", f"{start_ms / 1000:.6f}"]
+    args += ["-i", str(path)]
+    if duration_ms_ is not None:
+        args += ["-t", f"{duration_ms_ / 1000:.6f}"]
+    args += ["-f", "s16le", "-acodec", "pcm_s16le",
+             "-ac", "1", "-ar", str(rate), "-"]
+    proc = subprocess.run(args, capture_output=True)
+    if proc.returncode != 0 or not proc.stdout:
+        detail = (proc.stderr or b"").decode("utf-8", "replace").strip()
+        raise ProbeError(f"could not decode PCM from {path.name}: {detail[:300]}")
+    return proc.stdout
+
+
+def pcm_duration_ms(pcm: bytes, rate: int) -> float:
+    """Exact duration of a raw PCM buffer. 2 bytes per mono sample."""
+    return len(pcm) / 2 / rate * 1000.0
+
+
+def write_wav(pcm: bytes, dest: Path, *, rate: int) -> Path:
+    """Wrap raw PCM in a WAV container so the QC probes can read it."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [_require("ffmpeg"), "-y", "-v", "error",
+         "-f", "s16le", "-ar", str(rate), "-ac", "1", "-i", "-",
+         str(dest)],
+        input=pcm, capture_output=True,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or b"").decode("utf-8", "replace").strip()
+        raise ProbeError(f"could not write {dest.name}: {detail[:300]}")
+    return dest

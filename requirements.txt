@@ -1,0 +1,16 @@
+# Runtime. Pinned to the minors verified against the live Grafana Cloud stack
+# and the Gemini API on 7 September 2026.
+
+# Telemetry. The OTLP HTTP exporter specifically -- Grafana Cloud's OTLP
+# gateway is HTTP/protobuf, not gRPC.
+opentelemetry-api==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
+
+# Dubbing and reasoning. Live Translate needs the async live API, which
+# landed well before this pin.
+google-genai>=2.22.0
+
+# Provisioning rules, contact points and routes into Grafana.
+requests>=2.31
+PyYAML>=6.0
