@@ -94,16 +94,42 @@ groups:
       - record: market_has_stale_assets
         expr: clamp_max(max by (title, market) (asset_stale), 1)
 
+      # Coverage. `min()` over the checks that happen to exist answers "did
+      # everything I measured pass", which is NOT "is this shippable". A dead
+      # probe, a market with no dub yet, or a renamed series would leave the
+      # survivors passing and the market green having never been checked for
+      # sync at all. So the verdict also demands that the number of distinct
+      # requirements present equals the number the market owes -- published as
+      # `market_required_checks` from the same profile the thresholds come from.
+      #
+      # A missing measurement must block exactly as a failing one does.
+      - record: market_checks_present
+        expr: count by (title, market) (market_requirement_met)
+
+      - record: market_coverage_complete
+        expr: |
+          market_checks_present
+            >= bool on (market) group_left ()
+          market_required_checks
+
   - name: continuity_verdict
     interval: 30s
     rules:
 
-      # THE VERDICT. 1 = shippable. Requires every requirement met AND nothing
-      # stale. Absent inputs make this absent rather than 1: a market we cannot
+      # THE VERDICT. 1 = shippable. Three independent conditions, ANDed by
+      # multiplication because each is already 1/0:
+      #
+      #   1. every requirement that was measured passed
+      #   2. every requirement the market owes was actually measured
+      #   3. nothing in the market is stale against its parent
+      #
+      # Absent inputs make this absent rather than 1: a market we cannot
       # measure is not a market we may ship.
       - record: market_release_ready
         expr: |
           market_requirements_all_met
+            * on (title, market) group_left ()
+          market_coverage_complete
             * on (title, market) group_left ()
           (1 - market_has_stale_assets)
 

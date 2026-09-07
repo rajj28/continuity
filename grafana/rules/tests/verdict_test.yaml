@@ -21,6 +21,8 @@ tests:
     input_series:
       - series: 'market_threshold{market="fr-FR",requirement="dub_sync_max_ms"}'
         values: '120x10'
+      - series: 'market_required_checks{market="fr-FR"}'
+        values: '1x10'
       - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="fr-FR"}'
         values: '41x10'
       - series: 'asset_stale{title="SINTEL",scene="S01",market="fr-FR"}'
@@ -44,6 +46,8 @@ tests:
     input_series:
       - series: 'market_threshold{market="de-DE",requirement="dub_sync_max_ms"}'
         values: '120x20'
+      - series: 'market_required_checks{market="de-DE"}'
+        values: '1x20'
       - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="de-DE"}'
         values: '480x20'
       - series: 'asset_stale{title="SINTEL",scene="S01",market="de-DE"}'
@@ -85,6 +89,8 @@ tests:
     input_series:
       - series: 'market_threshold{market="hi-IN",requirement="dub_sync_max_ms"}'
         values: '120x10'
+      - series: 'market_required_checks{market="hi-IN"}'
+        values: '1x10'
       - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="hi-IN"}'
         values: '63x10'
       - series: 'asset_stale{title="SINTEL",scene="S01",market="hi-IN"}'
@@ -109,6 +115,8 @@ tests:
     input_series:
       - series: 'market_threshold{market="pt-BR",requirement="dub_sync_max_ms"}'
         values: '120x10'
+      - series: 'market_required_checks{market="pt-BR"}'
+        values: '1x10'
       - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="pt-BR"}'
         values: '55x10'
       - series: 'dub_sync_offset_ms{title="SINTEL",scene="S02",market="pt-BR"}'
@@ -195,3 +203,109 @@ tests:
                 Two verified-failed repairs on the same strategy. The Conductor
                 should have replanned; if this is still firing, autonomy is not
                 converging and a human should look.
+
+  # ------------------------------------------------------------------
+  # The gap min() alone would leave open: a market that owes six checks
+  # but only reports one. The one it reports passes. It must still block.
+  #
+  # This is the dead-probe case -- a crashed QC worker, a market whose dub
+  # was never built, a renamed series. Without coverage this reads as green.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: a passing measurement with missing siblings does not ship
+    input_series:
+      - series: 'market_required_checks{market="ja-JP"}'
+        values: '6x10'
+      - series: 'market_threshold{market="ja-JP",requirement="dub_sync_max_ms"}'
+        values: '120x10'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="ja-JP"}'
+        values: '38x10'
+      - series: 'asset_stale{title="SINTEL",scene="S01",market="ja-JP"}'
+        values: '0x10'
+    promql_expr_test:
+      # the measurement that exists genuinely passes ...
+      - expr: market_requirements_all_met
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_requirements_all_met{market="ja-JP",title="SINTEL"}'
+            value: 1
+      # ... but only 1 of the 6 owed checks is present ...
+      - expr: market_coverage_complete
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_coverage_complete{market="ja-JP",title="SINTEL"}'
+            value: 0
+      # ... so the market cannot ship.
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="ja-JP",title="SINTEL"}'
+            value: 0
+    alert_rule_test:
+      - alertname: MarketNotReleaseReady
+        eval_time: 4m
+        exp_alerts:
+          - exp_labels:
+              alertname: MarketNotReleaseReady
+              market: ja-JP
+              title: SINTEL
+              severity: critical
+              team: release_ops
+              continuity_action: investigate
+            exp_annotations:
+              summary: "ja-JP cannot ship SINTEL"
+              description: >-
+                Release readiness for SINTEL in ja-JP is 0. Either a delivery
+                requirement is failing or an asset is stale against the current
+                master.
+              runbook: https://github.com/rajj28/continuity/blob/main/docs/DEMO_RUNBOOK.md
+
+  # ------------------------------------------------------------------
+  # Full coverage, all six checks, everything in tolerance -> ships.
+  # The positive control for the coverage rule: proof it is a real gate
+  # and not one that can never be satisfied.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: all six checks present and passing -> ready
+    input_series:
+      - series: 'market_required_checks{market="fr-FR"}'
+        values: '6x10'
+      - series: 'market_threshold{market="fr-FR",requirement="dub_sync_max_ms"}'
+        values: '120x10'
+      - series: 'market_threshold{market="fr-FR",requirement="subtitle_max_cps"}'
+        values: '17x10'
+      - series: 'market_threshold{market="fr-FR",requirement="true_peak_max_dbtp"}'
+        values: '-2x10'
+      - series: 'market_threshold{market="fr-FR",requirement="speech_rate_max_wpm"}'
+        values: '180x10'
+      - series: 'market_threshold{market="fr-FR",requirement="semantic_fidelity_floor"}'
+        values: '0.85x10'
+      - series: 'market_threshold{market="fr-FR",requirement="loudness_target_lufs"}'
+        values: '-23x10'
+      - series: 'market_threshold{market="fr-FR",requirement="loudness_tolerance_lu"}'
+        values: '1x10'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '41x10'
+      - series: 'subtitle_reading_rate_cps{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '14.2x10'
+      - series: 'audio_true_peak_dbtp{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '-3.1x10'
+      - series: 'speech_rate_wpm{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '162x10'
+      - series: 'semantic_fidelity_score{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '0.91x10'
+      - series: 'audio_loudness_lufs{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '-23.3x10'
+      - series: 'asset_stale{title="SINTEL",scene="S01",market="fr-FR"}'
+        values: '0x10'
+    promql_expr_test:
+      - expr: market_checks_present
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_checks_present{market="fr-FR",title="SINTEL"}'
+            value: 6
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="fr-FR",title="SINTEL"}'
+            value: 1

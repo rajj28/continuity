@@ -5,10 +5,10 @@ consequential logic in the system and the one thing no agent may write, so it
 gets promtool's rule-unit-test treatment inside the normal pytest run rather
 than a manual check against a dashboard.
 
-Also asserts the two invariants that make the rules trustworthy at all:
-the thresholds the rules join against are actually publishable from the
-versioned profiles, and the test suite genuinely fails when the verdict is
-weakened.
+Also asserts the invariants that make the rules trustworthy at all: the
+thresholds the rules join against are publishable from the versioned profiles,
+the coverage gate counts exactly the checks the rules evaluate, and the suite
+genuinely fails when any clause of the verdict is weakened.
 """
 
 from __future__ import annotations
@@ -53,35 +53,51 @@ def test_verdict_unit_tests_pass():
     assert "SUCCESS" in result.stdout
 
 
-def test_the_verdict_tests_actually_bite(tmp_path):
-    """A suite that cannot fail proves nothing.
-
-    Weaken the verdict so it ignores staleness -- the exact regression that
-    would let a market ship on assets built from a superseded master -- and
-    confirm the suite catches it.
-    """
-    original = (RULES / "recording.yaml").read_text(encoding="utf-8")
-    weakened = original.replace(
-        """          market_requirements_all_met
+# Each entry drops one clause from the verdict. Both are regressions a
+# plausible "simplification" would introduce, and both would ship content that
+# was never validated -- so the suite has to reject them.
+SABOTAGE = {
+    "ignores_staleness": (
+        """          market_coverage_complete
             * on (title, market) group_left ()
           (1 - market_has_stale_assets)""",
+        """          market_coverage_complete""",
+    ),
+    "ignores_coverage": (
+        """          market_requirements_all_met
+            * on (title, market) group_left ()
+          market_coverage_complete""",
         """          market_requirements_all_met""",
-    )
-    assert weakened != original, "sabotage target not found; update this test"
+    ),
+}
 
-    backup = tmp_path / "recording.yaml"
-    backup.write_text(original, encoding="utf-8")
+
+@pytest.mark.parametrize("name", sorted(SABOTAGE))
+def test_the_verdict_tests_actually_bite(name):
+    """A suite that cannot fail proves nothing.
+
+    Weaken the verdict one clause at a time and confirm the suite catches each
+    one. `ignores_staleness` would ship assets built from a superseded master;
+    `ignores_coverage` would ship a market whose sync was never measured
+    because min() over the surviving checks returns 1.
+    """
+    path = RULES / "recording.yaml"
+    original = path.read_text(encoding="utf-8")
+    target, replacement = SABOTAGE[name]
+    assert target in original, f"sabotage target for {name} not found; update this test"
+    weakened = original.replace(target, replacement, 1)
+
     try:
-        (RULES / "recording.yaml").write_text(weakened, encoding="utf-8")
+        path.write_text(weakened, encoding="utf-8")
         result = _run("test", "rules", str(TESTS))
-        assert result.returncode != 0, "weakened verdict still passed its tests"
+        assert result.returncode != 0, f"{name}: weakened verdict still passed"
         # promtool reports a passing run on stdout but writes failure detail
         # to stderr, so check both rather than assuming one.
         report = result.stdout + result.stderr
         assert "FAILED" in report
         assert "market_release_ready" in report
     finally:
-        (RULES / "recording.yaml").write_text(original, encoding="utf-8")
+        path.write_text(original, encoding="utf-8")
 
     assert _run("test", "rules", str(TESTS)).returncode == 0
 
@@ -110,3 +126,39 @@ def test_every_threshold_the_rules_join_on_is_publishable():
                 assert _dig(profile, path) is not None, (
                     f"{market} has no value at {path}"
                 )
+
+
+def test_coverage_counts_exactly_the_checks_the_rules_evaluate():
+    """`market_required_checks` is what the coverage gate compares against, so
+    it has to name the same set of requirements the recording rules actually
+    produce. Add a seventh `scene_requirement_met` rule without adding it to
+    REQUIRED_CHECKS and the gate silently under-counts -- the market goes green
+    one check short. This test is what stops that."""
+    import re
+
+    from telemetry.exporters.thresholds import REQUIRED_CHECKS
+
+    rules_text = (RULES / "recording.yaml").read_text(encoding="utf-8")
+    # the `requirement:` label attached to each scene_requirement_met rule
+    evaluated = set(re.findall(r"^\s+requirement:\s*(\S+)\s*$", rules_text, re.M))
+    assert evaluated, "no requirement labels found; did the rules change shape?"
+    assert evaluated == set(REQUIRED_CHECKS), (
+        f"rules evaluate {sorted(evaluated)} but coverage counts "
+        f"{sorted(REQUIRED_CHECKS)}"
+    )
+
+
+def test_every_market_owes_the_full_set_of_checks():
+    """A profile missing a threshold quietly lowers that market's bar, because
+    a check it cannot be judged on is not counted against it. That may be
+    legitimate one day, but it must be a deliberate, visible choice -- so
+    assert the current profiles demand all of them."""
+    from media.qc.profiles import load_profiles
+    from telemetry.exporters.thresholds import REQUIRED_CHECKS, required_checks
+
+    for market, profile in load_profiles().items():
+        owed = required_checks(profile)
+        assert set(owed) == set(REQUIRED_CHECKS), (
+            f"{market} cannot be judged on "
+            f"{sorted(set(REQUIRED_CHECKS) - set(owed))}"
+        )

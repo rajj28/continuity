@@ -28,6 +28,26 @@ from telemetry.metrics import Instruments  # noqa: E402
 from telemetry.otel import setup, shutdown  # noqa: E402
 
 THRESHOLD_METRIC = "market_threshold"
+COVERAGE_METRIC = "market_required_checks"
+
+# The scene-level requirements the recording rules evaluate, and the profile
+# fields each one needs in order to be judged at all.
+#
+# This exists because "every requirement I measured passed" is NOT the same
+# statement as "this is shippable". If a probe stops emitting -- a crashed
+# worker, a market with no dub yet, a renamed series -- min() over the
+# survivors happily returns 1 and the market goes green having never been
+# checked for sync. Publishing the number of checks a market OWES lets the
+# verdict demand that the count present equals the count required, so a
+# missing measurement blocks exactly as a failing one does.
+REQUIRED_CHECKS: dict[str, tuple[str, ...]] = {
+    "dub_sync": ("delivery.sync_tolerance_ms",),
+    "subtitle_rate": ("delivery.subtitle_max_cps",),
+    "true_peak": ("delivery.true_peak_max_dbtp",),
+    "speech_rate": ("quality.speech_rate_max_wpm",),
+    "semantic_fidelity": ("quality.semantic_fidelity_floor",),
+    "loudness": ("delivery.loudness_target_lufs", "delivery.loudness_tolerance_lu"),
+}
 
 # Profile path -> the `requirement` label the recording rules join on.
 # Keys are dotted paths into a MarketProfile.
@@ -50,11 +70,29 @@ def _dig(obj: dict, dotted: str):
     return obj
 
 
+def _has(profile: dict, paths: tuple[str, ...]) -> bool:
+    for path in paths:
+        try:
+            float(_dig(profile, path))
+        except (KeyError, TypeError, ValueError):
+            return False
+    return True
+
+
+def required_checks(profile: dict) -> list[str]:
+    """The requirements this market can be judged on, given its profile."""
+    return [name for name, paths in REQUIRED_CHECKS.items() if _has(profile, paths)]
+
+
 def publish(instruments: Instruments) -> int:
     """Emit every threshold for every market. Returns the series count."""
     gauge = instruments.gauge(
         THRESHOLD_METRIC,
         "Per-market delivery threshold, from assets/market_profiles.json",
+    )
+    coverage = instruments.gauge(
+        COVERAGE_METRIC,
+        "How many scene-level checks this market must satisfy to be judged",
     )
     count = 0
     for market, profile in load_profiles().items():
@@ -68,6 +106,8 @@ def publish(instruments: Instruments) -> int:
                 continue
             gauge.set(value, {"market": market, "requirement": requirement})
             count += 1
+        coverage.set(float(len(required_checks(profile))), {"market": market})
+        count += 1
     return count
 
 
