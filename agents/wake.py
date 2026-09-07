@@ -204,7 +204,36 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._reply(404, {"error": "not found"})
 
+    def _drain(self, length: int) -> bytes:
+        """Read the request body, always, even on a path that will reject it.
+
+        Replying and closing while the client is still sending makes the OS
+        abort the connection instead of delivering the response -- so a caller
+        with a bad token sees a transport error rather than a 401, and whoever
+        is debugging it goes looking at the network instead of at the
+        credential. Draining first costs one read and removes the whole class
+        of problem.
+        """
+        remaining = length
+        chunks: list[bytes] = []
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 65536))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
     def do_POST(self) -> None:  # noqa: N802 - stdlib naming
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_BODY:
+            # Bounded drain: enough to close cleanly, not enough to be a way
+            # of making us read an arbitrary amount.
+            self._drain(MAX_BODY)
+            self._reply(413, {"error": "payload too large"})
+            return
+        body = self._drain(length)
+
         if self.path not in ("/alert", "/"):
             self._reply(404, {"error": "not found"})
             return
@@ -212,12 +241,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._reply(401, {"error": "unauthorised"})
             return
 
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > MAX_BODY:
-            self._reply(413, {"error": "payload too large"})
-            return
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = json.loads(body or b"{}")
         except json.JSONDecodeError as exc:
             self._reply(400, {"error": f"bad json: {exc}"})
             return

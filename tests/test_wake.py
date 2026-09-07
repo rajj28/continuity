@@ -208,3 +208,19 @@ def test_healthz(endpoint):
     url, _ = endpoint
     with urllib.request.urlopen(url + "/healthz", timeout=5) as resp:
         assert json.loads(resp.read()) == {"ok": True}
+
+
+def test_a_rejected_post_answers_over_http_rather_than_aborting(endpoint):
+    """Regression: the handler used to reply 401 without reading the request
+    body. Replying and closing while the client is still sending makes the OS
+    abort the connection, so the caller sees ConnectionAbortedError instead of
+    a 401 -- and whoever debugs it goes looking at the network rather than at
+    the credential. Run repeatedly, because the race is timing-dependent.
+    """
+    url, _ = endpoint
+    payload = grafana_payload()
+    payload["alerts"] *= 40           # a body big enough to still be in flight
+    for _ in range(8):
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            post(url, payload, token="wrong-token")
+        assert exc.value.code == 401
