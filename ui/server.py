@@ -116,6 +116,8 @@ class State:
         self.intents = IntentStore(STORE)
         self.store = Store(STORE)
         self.token = self.env.get("WAKE_TOKEN", "")
+        # Published deliberately. Investigations only -- see `_authorised`.
+        self.demo_token = self.env.get("DEMO_TOKEN", "")
         self._lock = threading.Lock()
 
     # -- the readiness matrix ---------------------------------------------
@@ -490,11 +492,31 @@ class State:
                 "output": (proc.stdout or "")[-6000:],
                 "error": (proc.stderr or "")[-2000:] if proc.returncode else ""}
 
+    def _dependencies(self, market: str) -> dict[str, list[str]]:
+        """Who is built from whom in this market -- the apply order."""
+        children: dict[str, list[str]] = {}
+        for asset in self.store.all_assets():
+            if asset.market != market:
+                continue
+            for parent in asset.parents:
+                if parent.asset_id != asset.id:
+                    children.setdefault(parent.asset_id, []).append(asset.id)
+        return children
+
     def investigate(self, market: str, sink) -> None:
-        """Run the ADK Conductor, pushing every step to `sink` as it happens."""
-        from agents.adk_conductor import conduct_adk
+        """Wake every specialist this market's failures call for, at once.
+
+        Streams the roster before they run and each conclusion as it lands, so
+        an operator watches the swarm work rather than being handed its
+        summary. That the compliance specialist has no repair tool is visible
+        here and nowhere else.
+        """
         from agents.investigate import investigate as run_investigation
+        from agents.specialists import dispatch_for
+        from agents.swarm import order_repairs
+        from agents.swarm import swarm as run_swarm
         from agents.wake import Incident
+        from media.model import client as model_client
         from telemetry.genai import GenAI
         from telemetry.metrics import Instruments
         from telemetry.otel import setup, shutdown
@@ -521,26 +543,67 @@ class State:
                       "detail": "the market recovered before we looked"})
                 return
 
-            sink({"type": "step", "name": "reason",
-                  "detail": "the agent is choosing a repair"})
-            session = asyncio.run(
-                conduct_adk(self.signal, inv, genai, scene="S03", sink=sink)
-            )
-            if session.intent is not None:
-                i = session.intent
-                sink({"type": "conclusion", "action": "repair",
-                      "strategy": i.strategy.value, "params": i.params,
-                      "prediction": i.prediction.describe(),
-                      "tier": i.tier.name, "rationale": i.rationale,
-                      "evidence": [e.cite() for e in i.justification]})
-            elif session.escalation:
-                sink({"type": "conclusion", "action": "escalate",
-                      **session.escalation})
-            else:
+            failing = sorted(f.subject for f in inv.findings if f.subject)
+            work = dispatch_for(failing)
+            if not work:
                 sink({"type": "conclusion", "action": "none",
-                      "detail": "no conclusion reached"})
-            for rejection in session.rejections:
-                sink({"type": "rejected", "detail": rejection})
+                      "detail": "nothing failing to investigate"})
+                return
+
+            # Who is being woken, and what each may do. Sent before they run
+            # so an operator watching sees the roster form -- including that
+            # the compliance specialist has no repair tool at all, which is
+            # the point and is invisible if you only see conclusions.
+            sink({"type": "roster", "specialists": [
+                {"name": s.name, "checks": checks, "may_repair": s.may_repair}
+                for s, checks in work
+            ]})
+            sink({"type": "step", "name": "reason",
+                  "detail": f"{len(work)} specialist(s) working in parallel"})
+
+            result = asyncio.run(run_swarm(
+                model_client(self.env), self.signal, inv, genai,
+                failing=failing, scene="S03",
+            ))
+
+            for verdict in result.verdicts:
+                who = verdict.name
+                if verdict.error:
+                    sink({"type": "conclusion", "agent": who,
+                          "action": "error", "detail": verdict.error[:300]})
+                    continue
+                conclusion = verdict.conclusion
+                if conclusion is None:
+                    sink({"type": "conclusion", "agent": who,
+                          "action": "none", "detail": "no conclusion"})
+                elif conclusion.acted and conclusion.intent is not None:
+                    i = conclusion.intent
+                    sink({"type": "conclusion", "agent": who,
+                          "action": "repair",
+                          "strategy": i.strategy.value, "params": i.params,
+                          "prediction": i.prediction.describe(),
+                          "tier": i.tier.name, "rationale": i.rationale,
+                          "evidence": [e.cite() for e in i.justification]})
+                else:
+                    sink({"type": "conclusion", "agent": who,
+                          "action": conclusion.action,
+                          "reason": conclusion.reason,
+                          "detail": conclusion.summary[:400]})
+                for name, why in (conclusion.rejections if conclusion else []):
+                    sink({"type": "rejected", "agent": who,
+                          "detail": f"{name}: {why}"})
+
+            # The order the proposals would be applied in, and why there is an
+            # order at all: repairing an asset gives it a new hash, so anything
+            # built from it is stale until rebuilt.
+            ordered = order_repairs(result.repairs, self._dependencies(market))
+            if len(ordered) > 1:
+                sink({"type": "plan", "order": [
+                    {"agent": v.name,
+                     "strategy": v.conclusion.intent.strategy.value,
+                     "asset": v.conclusion.intent.target_asset_id}
+                    for v in ordered
+                ]})
         finally:
             shutdown()
 
@@ -562,16 +625,33 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, payload: Any, code: int = 200) -> None:
         self._send(code, json.dumps(payload).encode(), "application/json")
 
-    def _authorised(self) -> bool:
+    def _authorised(self, *, investigate_only: bool = False) -> bool:
         """Reads are open; anything that changes something needs the token.
 
         This service is public and these actions start real work on real
         assets. A visitor should see the whole truth and be able to alter none
         of it.
+
+        Two tokens, and the difference is the point. The operator token opens
+        everything. `DEMO_TOKEN` opens investigations and nothing else, so it
+        can be published -- in a README, in a submission -- and let someone
+        drive the agents without also handing them the ability to start a
+        repair on real media. An investigation costs model quota and changes
+        no asset; approving a repair rewrites audio.
+
+        The wake receiver never accepts the demo token at all. It shares this
+        service's image but not its door: a forged alert would start the whole
+        autonomous path.
         """
-        if not self.state.token:
+        offered = self.headers.get("Authorization", "")
+        if self.state.token and offered == f"Bearer {self.state.token}":
             return True
-        return self.headers.get("Authorization") == f"Bearer {self.state.token}"
+        if (investigate_only and self.state.demo_token
+                and offered == f"Bearer {self.state.demo_token}"):
+            return True
+        # No operator token configured at all: local development, everything
+        # open. Deploys refuse to start without one (see deploy/cloudrun.py).
+        return not self.state.token
 
     def _drain(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
@@ -602,6 +682,7 @@ class Handler(BaseHTTPRequestHandler):
                 board["activity"] = self.state.activity()
                 board["locked"] = bool(self.state.token)
                 board["can_repair"] = self.state.has_media()
+                board["demo_open"] = bool(self.state.demo_token)
                 board["guardrails"] = self.state.guardrails()
                 return self._json(board)
             if path == "/api/history":
@@ -619,9 +700,14 @@ class Handler(BaseHTTPRequestHandler):
         if not (path.startswith("/api/approve/")
                 or path.startswith("/api/investigate/")):
             return self._json({"error": "not found"}, 404)
-        if not self._authorised():
-            return self._json(
-                {"error": "operator token required for this action"}, 401)
+        investigating = path.startswith("/api/investigate/")
+        if not self._authorised(investigate_only=investigating):
+            return self._json({"error": (
+                "operator token required for this action"
+                if not investigating else
+                "a token is required to run an investigation; it costs model "
+                "quota and this service is public"
+            )}, 401)
 
         market = path.rsplit("/", 1)[1]
         if path.startswith("/api/approve/"):

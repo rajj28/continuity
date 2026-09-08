@@ -300,7 +300,24 @@
        letter-spacing: .06em; text-transform: uppercase; color: var(--ink-4); }
   .k.tool { color: #8ab8f2; } .k.finding { color: var(--good-ink); }
   .k.conclusion { color: var(--warning-ink); } .k.error { color: var(--critical-ink); }
+  .k.roster { color: #a9cbf5; } .k.plan { color: var(--s3); }
+  .k.rejected { color: var(--warning-ink); }
   .ev > span:last-child { min-width: 0; word-break: break-word; }
+
+  /* The roster, shown before the specialists run. Who was woken, what each
+     was asked about, and -- the part that matters -- which of them holds a
+     repair tool at all. */
+  .roster { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
+  .agent { font: 600 9px/1 var(--mono); letter-spacing: .06em; padding: 5px 7px;
+           border-radius: 3px; background: rgba(57,135,229,.13); color: #a9cbf5;
+           box-shadow: inset 0 0 0 1px rgba(57,135,229,.3); }
+  /* No repair tool. Not styled as an error -- it is the correct capability
+     for a dimension nothing can be processed into compliance. */
+  .agent.readonly { background: rgba(107,105,96,.16); color: var(--ink-2);
+                    box-shadow: inset 0 0 0 1px var(--line-2); }
+  .agent i { font-style: normal; opacity: .65; font-weight: 400; }
+  .who { flex: none; font: 600 9px/1.7 var(--mono); letter-spacing: .05em;
+         color: var(--s1); text-transform: uppercase; }
 
   .bar { display: flex; justify-content: space-between; gap: 12px;
          padding: 8px 0; border-top: 1px solid var(--line); font-size: 12px; }
@@ -382,9 +399,11 @@
       </div>
     </div>
 
-    <h2>Agent activity <em>live, as it reasons</em></h2>
+    <h2>Agent activity <em>every failing dimension, at once</em></h2>
     <div class="panel"><div class="pad trace" id="trace" aria-live="polite">
-      <span class="muted">Select a market and run an investigation.</span>
+      <span class="muted">Select a market and run an investigation. One
+      specialist is woken per failing dimension — they investigate in
+      parallel, and the compliance specialist has no repair tool at all.</span>
     </div></div>
 
     <h2>Earned autonomy <em>read from Prometheus at decision time</em></h2>
@@ -442,8 +461,11 @@ $("signin").onclick = () => {
   pop.innerHTML = `
     <h3>Operator token</h3>
     <p>Reading this board needs nothing. Running an investigation or approving
-       a repair starts real work on real assets, so those need the token.
-       It is kept for this tab only.</p>
+       a repair needs a token, because this service is public and both cost
+       something real. Kept for this tab only.</p>
+    ${board && board.demo_open ? `<p style="color:#8ab8f2">A demo token is
+       published in the project README. It runs investigations and cannot
+       approve a repair.</p>` : ""}
     <input id="tok" type="password" autocomplete="off" spellcheck="false"
            placeholder="WAKE_TOKEN" value="${esc(token())}">
     <div class="row">
@@ -797,7 +819,19 @@ function pushEvent(ev) {
   const box = $("trace");
   if (box.dataset.fresh !== "1") { box.innerHTML = ""; box.dataset.fresh = "1"; }
   let body = "";
-  if (ev.type === "tool")
+  if (ev.type === "roster") {
+    body = `<span class="roster">${ev.specialists.map(s => `
+      <span class="agent ${s.may_repair ? "" : "readonly"}"
+        title="${s.may_repair ? "may propose a repair"
+                              : "has no repair tool: nothing in this dimension is fixed by processing a file"}">
+        ${esc(s.name)} <i>${esc(s.checks.join(" "))}</i>
+        ${s.may_repair ? "" : "<i>· read-only</i>"}</span>`).join("")}</span>`;
+  }
+  else if (ev.type === "plan")
+    body = `apply in this order — lineage decides it:` +
+      ev.order.map((o, i) => `<span class="q">${i + 1}. ${esc(o.agent)}: ` +
+        `${esc(o.strategy)} on ${esc(o.asset.split(":").slice(1).join(":"))}</span>`).join("");
+  else if (ev.type === "tool")
     body = `<code>${esc(ev.name)} → ${esc(JSON.stringify(ev.result).slice(0, 240))}</code>`;
   else if (ev.type === "finding")
     body = esc(ev.claim) + (ev.evidence || []).map(e => `<span class="q">${esc(e)}</span>`).join("");
@@ -808,8 +842,12 @@ function pushEvent(ev) {
   else if (ev.type === "conclusion")
     body = `${esc(ev.action)} — ${esc(ev.reason || ev.detail || "")}`;
   else body = esc(ev.detail || ev.name || JSON.stringify(ev));
+  // Which agent said this. With five working at once, an unattributed trace
+  // is just noise -- and the conclusions are the lines where it matters most.
+  const who = ev.agent ? `<span class="who">${esc(ev.agent)}</span>` : "";
   box.insertAdjacentHTML("beforeend",
-    `<div class="ev"><span class="k ${esc(ev.type)}">${esc(ev.type)}</span><span>${body}</span></div>`);
+    `<div class="ev"><span class="k ${esc(ev.type)}">${esc(ev.type)}</span>` +
+    `<span>${who}${body}</span></div>`);
   box.scrollTop = box.scrollHeight;
 }
 

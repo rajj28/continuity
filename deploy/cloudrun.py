@@ -103,6 +103,11 @@ APIS = (
 # container is a key file that can leak out of one.
 FORWARDED = (
     "WAKE_TOKEN",
+    # Investigate-only, and published on purpose so a reviewer can drive the
+    # agents without being handed the ability to start a repair on real media.
+    # `ui/server._authorised` is where the difference is enforced; the wake
+    # receiver ignores it entirely.
+    "DEMO_TOKEN",
     "GCP_PROJECT_ID",
     "GCP_VERTEX_LOCATION",
     "GRAFANA_URL",

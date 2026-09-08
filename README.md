@@ -55,7 +55,25 @@ the on-disk store to Prometheus every 30 seconds — series go stale after five
 minutes, so without it the board would correctly but uselessly report that
 nothing has been measured.
 
-Reads are open. Everything that changes anything needs the operator token.
+### Drive it yourself
+
+Reads are open — the board, the verdict provenance, the timeline and the
+lineage need nothing. To watch the agents actually work, sign in on the
+control room with:
+
+```
+demo-vd18Z5yDsCiBzkVIv9ThJQOz
+```
+
+Pick a blocked market and press **Investigate now**. One specialist is woken
+per failing dimension and they work in parallel; every tool call streams as it
+happens. Watch the compliance specialist in particular — it is never handed a
+repair tool, so it can only escalate.
+
+That token runs investigations and **cannot approve a repair**, and the wake
+receiver does not accept it at all. It is published deliberately; the operator
+token is not. An investigation costs model quota and changes no asset, which is
+why this one can be public.
 
 `docs/DEMO.md` is the three-minute walkthrough.
 
