@@ -187,6 +187,58 @@ def test_every_market_owes_the_full_set_of_checks():
         )
 
 
+def test_every_check_a_market_owes_can_actually_be_measured():
+    """A requirement with nothing behind it makes the verdict unsatisfiable.
+
+    `semantic_fidelity` was declared in every market profile and produced by
+    nothing. The coverage gate therefore demanded a measurement that could not
+    exist, and `market_release_ready` could not reach 1 for any market on
+    earth -- not because anything was broken, but because the bar included a
+    check with no probe. Repairs ran, measurements improved, and the board
+    stayed red with no failing check to point at.
+
+    That is the worst failure the coverage gate can have: it is designed to
+    make an unmeasured thing block, and it did exactly that, correctly,
+    forever. The gate was right. The requirement was fiction.
+
+    So every check a market owes must map to a series something publishes.
+    """
+    from media.qc.profiles import load_profiles
+    from telemetry.exporters.thresholds import MARKET_CHECKS, required_checks
+    from telemetry.exporters.state import PUBLISHED_BY_KIND
+    from telemetry.metrics import MEASUREMENT_SERIES
+
+    # What a QC probe can put into Prometheus, as check names. The scene-level
+    # requirement names are the metric names minus their units, and the map
+    # below is the one place that correspondence is written down.
+    scene_checks = {
+        "dub_sync": "delivery.dub_sync_offset_ms",
+        "line_overrun": "delivery.line_overrun_ms",
+        "speech_rate": "quality.speech_rate_wpm",
+        "subtitle_rate": "delivery.subtitle_reading_rate_cps",
+        "loudness": "delivery.audio_loudness_lufs",
+        "true_peak": "delivery.audio_true_peak_dbtp",
+        "ad_collision": "accessibility.ad_collision_ms",
+    }
+    publishable = {key for keys in PUBLISHED_BY_KIND.values() for key in keys}
+
+    for market, profile in load_profiles().items():
+        for check in required_checks(profile):
+            if check in MARKET_CHECKS or check.startswith("tech_"):
+                continue          # pushed directly by the release checker
+            assert check in scene_checks, (
+                f"{market} owes {check!r}, which no QC probe is known to "
+                f"produce. A requirement nothing measures blocks the market "
+                f"forever and cannot be repaired."
+            )
+            key = scene_checks[check]
+            assert key in MEASUREMENT_SERIES, f"{key} has no series mapping"
+            assert key in publishable, (
+                f"{key} is measured but no asset kind publishes it, so "
+                f"{market} owes {check!r} and will never see it"
+            )
+
+
 def test_a_release_is_judged_on_more_than_how_it_sounds():
     """The scope check. "Can we release this here" is not a localisation
     question with some extras bolted on -- rights, technical conformance and
@@ -197,8 +249,7 @@ def test_a_release_is_judged_on_more_than_how_it_sounds():
     from telemetry.exporters.thresholds import MARKET_CHECKS, required_checks
 
     dimensions = {
-        "localisation": {"dub_sync", "line_overrun", "speech_rate",
-                         "semantic_fidelity"},
+        "localisation": {"dub_sync", "line_overrun", "speech_rate"},
         "audio_delivery": {"loudness", "true_peak"},
         "timed_text": {"subtitle_rate"},
         "technical": {"tech_video_height", "tech_frame_rate",

@@ -101,14 +101,6 @@ groups:
         labels:
           requirement: speech_rate
 
-      - record: scene_requirement_met
-        expr: |
-          semantic_fidelity_score
-            >= bool on (market) group_left ()
-          market_threshold_current{requirement="semantic_fidelity_floor"}
-        labels:
-          requirement: semantic_fidelity
-
       # Loudness is a two-sided tolerance band, not a ceiling: too quiet fails
       # delivery exactly as surely as too loud.
       - record: scene_requirement_met
@@ -151,11 +143,6 @@ groups:
       - record: market_requirements_all_met
         expr: min by (title, market) (market_requirement_met)
 
-      # Staleness is a separate axis: an asset can pass every quality check and
-      # still be invalid because its parent moved underneath it.
-      - record: market_has_stale_assets
-        expr: clamp_max(max by (title, market) (asset_stale), 1)
-
       # Coverage. `min()` over the checks that happen to exist answers "did
       # everything I measured pass", which is NOT "is this shippable". A dead
       # probe, a market with no dub yet, or a renamed series would leave the
@@ -173,6 +160,29 @@ groups:
           market_checks_present
             >= bool on (market) group_left ()
           market_required_checks_current
+
+      # Staleness is a separate axis: an asset can pass every quality check and
+      # still be invalid because its parent moved underneath it.
+      #
+      # The `or` restores the answer for a market that has no assets at all.
+      # `max by (...)` over an empty set yields NOTHING, not zero -- so a market
+      # nobody has built for had no staleness series, the verdict multiplied by
+      # an absent factor and vanished, and the board reported UNJUDGED for three
+      # markets that are simply empty. That is the precise failure this design
+      # exists to prevent, arrived at from the other direction: "we have no
+      # opinion" is a far weaker statement than "nothing has been built", and
+      # the second one is the true one.
+      #
+      # A market with no assets vacuously has no stale ones, so the honest value
+      # is 0, and the coverage gate above is then free to block it on its own
+      # terms. Anchored on market_checks_present -- recorded just above, so this
+      # sees the current cycle -- because that series exists for every (title,
+      # market) the board knows about.
+      - record: market_has_stale_assets
+        expr: |
+          clamp_max(max by (title, market) (asset_stale), 1)
+            or on (title, market)
+          (market_checks_present * 0)
 
   - name: continuity_verdict
     interval: 30s

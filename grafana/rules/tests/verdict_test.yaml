@@ -261,15 +261,24 @@ tests:
               runbook: https://github.com/rajj28/continuity/blob/main/docs/DEMO_RUNBOOK.md
 
   # ------------------------------------------------------------------
-  # Full coverage, all six checks, everything in tolerance -> ships.
-  # The positive control for the coverage rule: proof it is a real gate
-  # and not one that can never be satisfied.
+  # Full coverage, every check in tolerance -> ships.
+  #
+  # The positive control, and the most important test in this file: proof the
+  # coverage rule is a real gate and not one that can never be satisfied.
+  #
+  # It stopped being satisfiable in production for exactly one reason. Every
+  # market profile declared `semantic_fidelity_floor`, which made every market
+  # owe a `semantic_fidelity` check, and nothing in the pipeline produced that
+  # score -- so coverage was permanently short by one and no market could ever
+  # be ready. This test kept passing throughout, because the fixture below
+  # supplied the score by hand. A positive control that manufactures an input
+  # production cannot produce is not a control at all.
   # ------------------------------------------------------------------
   - interval: 30s
-    name: all seven checks present and passing -> ready
+    name: every check present and passing -> ready
     input_series:
       - series: 'market_required_checks{market="fr-FR"}'
-        values: '7x10'
+        values: '6x10'
       - series: 'market_threshold{market="fr-FR",requirement="dub_sync_max_ms"}'
         values: '120x10'
       - series: 'market_threshold{market="fr-FR",requirement="line_overrun_max_ms"}'
@@ -280,8 +289,6 @@ tests:
         values: '-2x10'
       - series: 'market_threshold{market="fr-FR",requirement="speech_rate_max_wpm"}'
         values: '180x10'
-      - series: 'market_threshold{market="fr-FR",requirement="semantic_fidelity_floor"}'
-        values: '0.85x10'
       - series: 'market_threshold{market="fr-FR",requirement="loudness_target_lufs"}'
         values: '-23x10'
       - series: 'market_threshold{market="fr-FR",requirement="loudness_tolerance_lu"}'
@@ -296,8 +303,6 @@ tests:
         values: '-3.1x10'
       - series: 'speech_rate_wpm{title="SINTEL",scene="S01",market="fr-FR"}'
         values: '162x10'
-      - series: 'semantic_fidelity_score{title="SINTEL",scene="S01",market="fr-FR"}'
-        values: '0.91x10'
       - series: 'audio_loudness_lufs{title="SINTEL",scene="S01",market="fr-FR"}'
         values: '-23.3x10'
       - series: 'asset_stale{title="SINTEL",scene="S01",market="fr-FR"}'
@@ -307,7 +312,7 @@ tests:
         eval_time: 3m
         exp_samples:
           - labels: 'market_checks_present{market="fr-FR",title="SINTEL"}'
-            value: 7
+            value: 6
       - expr: market_release_ready
         eval_time: 3m
         exp_samples:
@@ -402,4 +407,49 @@ tests:
         eval_time: 3m
         exp_samples:
           - labels: 'market_release_ready{market="de-DE",title="SINTEL"}'
+            value: 0
+
+  # ------------------------------------------------------------------
+  # Regression: a market with no assets is BLOCKED, not UNJUDGED.
+  #
+  # `max by (title, market) (asset_stale)` over an empty set yields nothing,
+  # and an absent factor made the whole product absent -- so three markets that
+  # simply had no dub built yet reported no verdict at all, and the board drew
+  # them as UNJUDGED next to markets it had genuinely judged.
+  #
+  # That is the coverage-gate failure arriving from the other side. "Nothing is
+  # built" is a far stronger and more useful statement than "we have no
+  # opinion", and a release board that renders the two the same way is lying by
+  # omission about which markets are actually in trouble.
+  #
+  # Here: the market owes 2 checks, one is measured and passes, no asset_stale
+  # series exists at all. Coverage is incomplete, so the verdict must be 0.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: a market with no assets at all is blocked rather than unjudged
+    input_series:
+      - series: 'market_threshold{market="ja-JP",requirement="dub_sync_max_ms"}'
+        values: '120x20'
+      - series: 'market_required_checks{market="ja-JP"}'
+        values: '2x20'
+      - series: 'market_check_met{title="SINTEL",market="ja-JP",check="rights_cleared"}'
+        values: '1x20'
+    promql_expr_test:
+      # The factor itself is now 0 rather than absent.
+      - expr: market_has_stale_assets
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_has_stale_assets{market="ja-JP",title="SINTEL"}'
+            value: 0
+      # Coverage is what actually blocks it: 1 check present, 2 owed.
+      - expr: market_coverage_complete
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_coverage_complete{market="ja-JP",title="SINTEL"}'
+            value: 0
+      # And the verdict exists, and says no.
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="ja-JP",title="SINTEL"}'
             value: 0

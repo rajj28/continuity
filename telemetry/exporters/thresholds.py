@@ -67,7 +67,21 @@ REQUIRED_CHECKS: dict[str, tuple[str, ...]] = {
     "subtitle_rate": ("delivery.subtitle_max_cps",),
     "true_peak": ("delivery.true_peak_max_dbtp",),
     "speech_rate": ("quality.speech_rate_max_wpm",),
-    "semantic_fidelity": ("quality.semantic_fidelity_floor",),
+    # `semantic_fidelity` is deliberately absent. It was here, every profile
+    # declared the floor, and nothing in the pipeline could produce the score
+    # -- so every market permanently owed a check that could never be measured,
+    # the coverage gate could never be satisfied, and `market_release_ready`
+    # was unsatisfiable for every market. The system could not have said yes to
+    # anything, and no repair would ever have changed that.
+    #
+    # Whether a dubbed line still MEANS what the original meant is a judgement.
+    # The only machine version is a model scoring its own back-translation, and
+    # a model-derived number that blocks a release breaks the guarantee this
+    # whole design rests on: models propose, measurements dispose. So it lives
+    # with the diagnostics, which inform a human and gate nothing.
+    #
+    # Re-adding the line below and the floor to the profiles is all it takes,
+    # the day there is a measurement worthy of the word.
     "loudness": ("delivery.loudness_target_lufs", "delivery.loudness_tolerance_lu"),
 }
 
