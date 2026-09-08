@@ -43,7 +43,7 @@ from agents.contracts import (
 )
 from agents.investigate import Investigation
 from agents.signal import Signal
-from telemetry.metrics import DRIFT_SYSTEMATIC, LOUDNESS, SYNC_OFFSET
+from telemetry.metrics import DRIFT_SYSTEMATIC, LOUDNESS, SYNC_OFFSET, SYNC_SIGNED
 
 # How close to the threshold a repair should aim. Predicting exactly the
 # threshold would make a repair that lands on the boundary count as a success
@@ -65,17 +65,33 @@ class Unplannable(RuntimeError):
 
 def _sync_evidence(
     signal: Signal, title: str, market: str
-) -> tuple[Evidence, Evidence, Evidence]:
-    """The three facts a sync repair has to be built on."""
+) -> tuple[Evidence, Evidence, Evidence, Evidence]:
+    """The four facts a sync repair has to be built on.
+
+    `direction` is the fourth, and it was learned the expensive way. The
+    measurement is a magnitude, because it is judged against a tolerance and a
+    signed value would let a badly EARLY dub pass a `<= 120 ms` check. So on
+    its own it says how far wrong the stem is and not which way, and RETIME --
+    whose entire job is to shift the stem one way or the other -- was choosing
+    from a coin flip. On real audio it went 187 ms early, shifted a further
+    188 ms earlier, and landed at 375 ms.
+
+    Refusing without it rather than assuming "late" is the same rule this
+    module already applies to a missing threshold: planning on a partial
+    picture is how a repair gets aimed at the wrong thing.
+    """
     observed = signal.measurement(SYNC_OFFSET, title=title, market=market)
     bar = signal.threshold(market, "dub_sync_max_ms")
     systematic = signal.observe(
         f'{DRIFT_SYSTEMATIC}{{title="{title}",market="{market}"}}'
     )
+    direction = signal.observe(
+        f'{SYNC_SIGNED}{{title="{title}",market="{market}"}}'
+    )
     missing = [
         name for name, value in
         (("measurement", observed), ("threshold", bar),
-         ("drift shape", systematic))
+         ("drift shape", systematic), ("drift direction", direction))
         if value is None
     ]
     if missing:
@@ -84,7 +100,7 @@ def _sync_evidence(
             f"Planning on a partial picture is how a repair gets aimed at the "
             f"wrong thing."
         )
-    return observed, bar, systematic  # type: ignore[return-value]
+    return observed, bar, systematic, direction  # type: ignore[return-value]
 
 
 def plan_sync_repair(
@@ -102,8 +118,9 @@ def plan_sync_repair(
     the Conductor re-plans with REWRITE rather than letting the same evidence
     produce the same answer forever.
     """
-    observed, bar, systematic = _sync_evidence(signal, title, market)
+    observed, bar, systematic, direction = _sync_evidence(signal, title, market)
     current = float(observed.value)
+    signed = float(direction.value)
     limit = float(bar.value)
     target = round(limit * SAFETY_MARGIN, 1)
 
@@ -121,15 +138,20 @@ def plan_sync_repair(
         strategy = Strategy.REWRITE
 
     if strategy is Strategy.RETIME:
-        # A uniform offset is undone by shifting the stem by that offset. The
-        # parameter is the measurement, which is why this is checkable: if the
-        # stem was not uniformly offset, the shift lands somewhere provably
-        # wrong and verification says so.
-        params = {"shift_ms": -round(current, 1)}
+        # A uniform offset is undone by shifting the stem back by that offset.
+        # Built from the SIGNED drift, not the magnitude: positive means the
+        # dub arrives late and must be pulled earlier, negative means it
+        # arrives early and must be pushed later. Using the magnitude here
+        # always shifted earlier, which fixed a late stem and doubled the error
+        # on an early one.
+        shift = -round(signed, 1)
+        params = {"shift_ms": shift}
+        late = "late" if signed > 0 else "early"
         rationale = (
-            f"every line drifts by a similar amount ({current:g} ms), so the "
-            f"stem is offset rather than mistimed. Shifting it by "
-            f"{-round(current, 1):g} ms should bring every onset back."
+            f"every line drifts by a similar amount, and the stem runs "
+            f"{abs(signed):g} ms {late} on average against a {limit:g} ms "
+            f"limit, so it is offset rather than mistimed. Shifting it by "
+            f"{shift:g} ms should bring every onset back."
         )
     else:
         # Shortening the text is the only thing that shortens a line. How much

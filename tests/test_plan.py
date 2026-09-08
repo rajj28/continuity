@@ -21,6 +21,10 @@ from tests.test_wake import grafana_payload
 SYNC = 'dub_sync_offset_ms{market="de-DE",title="SINTEL"}'
 BAR = 'market_threshold{market="de-DE",requirement="dub_sync_max_ms"}'
 SHAPE = 'dub_drift_systematic{title="SINTEL",market="de-DE"}'
+# The direction the stem is out by. Separate from SYNC, which is a magnitude:
+# a `<= 120 ms` threshold on a signed value would pass a badly early dub, so
+# the measurement stays unsigned and this says which way to shift.
+SIGNED = 'dub_sync_signed_ms{title="SINTEL",market="de-DE"}'
 LOUD_M = 'audio_loudness_lufs{market="de-DE",scene="S01",title="SINTEL"}'
 LOUD_T = 'market_threshold{market="de-DE",requirement="loudness_target_lufs"}'
 LOUD_TOL = 'market_threshold{market="de-DE",requirement="loudness_tolerance_lu"}'
@@ -38,6 +42,7 @@ def signal_for(**overrides) -> Signal:
         SYNC: [sample(480)],
         BAR: [sample(120)],
         SHAPE: [sample(1)],
+        SIGNED: [sample(480)],      # late by default; negative means early
     }
     answers.update(overrides)
     return Signal(StubClient(answers))  # type: ignore[arg-type]
@@ -62,6 +67,41 @@ def test_uniform_drift_is_repaired_by_shifting_the_stem():
     assert intent.strategy is Strategy.RETIME
     assert intent.params == {"shift_ms": -480.0}
     assert "offset rather than mistimed" in intent.rationale
+
+
+def test_the_shift_follows_the_direction_of_the_drift_not_its_size():
+    """The bug that oscillated on real audio.
+
+    `dub_sync_offset_ms` is a magnitude, so a stem 480 ms EARLY and one 480 ms
+    LATE are the same number. Building the shift from that number always
+    shifted earlier: it happened to fix the late stem and doubled the error on
+    the early one, 187 ms -> 375 ms, on the real Sintel dub.
+    """
+    late = plan_sync_repair(
+        signal_for(**{SIGNED: [sample(480)]}),
+        title="SINTEL", market="de-DE", scene="S01",
+    )
+    early = plan_sync_repair(
+        signal_for(**{SIGNED: [sample(-480)]}),
+        title="SINTEL", market="de-DE", scene="S01",
+    )
+    assert late.params == {"shift_ms": -480.0}, "a late dub is pulled earlier"
+    assert early.params == {"shift_ms": 480.0}, "an early dub is pushed later"
+    assert "late" in late.rationale and "early" in early.rationale
+
+
+def test_a_sync_repair_is_refused_when_the_direction_is_unknown():
+    """Absent evidence is not an excuse to guess, here as everywhere else.
+
+    Without the signed series the planner cannot know which way to shift, and
+    assuming "late" is what produced the oscillation. It refuses instead, for
+    the same reason it refuses without a threshold.
+    """
+    with pytest.raises(Unplannable, match="drift direction"):
+        plan_sync_repair(
+            signal_for(**{SIGNED: []}),
+            title="SINTEL", market="de-DE", scene="S01",
+        )
 
 
 def test_progressive_drift_is_not_repaired_by_shifting_the_stem():

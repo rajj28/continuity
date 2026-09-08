@@ -151,6 +151,10 @@ class Instruments:
 
 DRIFT_SYSTEMATIC = "dub_drift_systematic"
 SYNC_P95 = "dub_sync_p95_ms"
+# Positive means the dub arrives LATE. The unsigned dub_sync_offset_ms says
+# how far off it is; this says which way, and RETIME cannot choose a shift
+# direction without it.
+SYNC_SIGNED = "dub_sync_signed_ms"
 END_OVERHANG = "dub_end_overhang_ms"
 UTTERANCES = "dub_utterances"
 WORST_OVERRUN = "dub_worst_overrun_ms"
@@ -161,6 +165,7 @@ DIAGNOSTIC_SERIES: dict[str, str] = {
     "drift_is_systematic": DRIFT_SYSTEMATIC,
     "overrunning_lines": OVERRUNNING_LINES,
     "p95_onset_ms": SYNC_P95,
+    "mean_signed_onset_ms": SYNC_SIGNED,
     "max_end_overhang_ms": END_OVERHANG,
     "utterances": UTTERANCES,
 }

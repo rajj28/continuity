@@ -117,10 +117,31 @@ def sync_offset(
     average one. p95 and the per-utterance detail ride along so the agent can
     tell "one bad line" from "the whole scene has slipped" -- which selects a
     completely different repair strategy.
+
+    ## The magnitude is the measurement; the sign is a separate fact
+
+    The published value is deliberately unsigned. It is compared against a
+    tolerance, and a signed value under a `<= 120` threshold would let a dub
+    running 400 ms EARLY pass as comfortably within spec.
+
+    But direction cannot simply be discarded, which is what this function used
+    to do on its first line. RETIME shifts the stem, and a shift needs to know
+    which way. Blind to that, the loop oscillated on real audio:
+
+        273 ms late  -> shift -153  -> 120 ms   (right direction, by luck)
+        187 ms EARLY -> shift -188  -> 375 ms   (further early; twice as wrong)
+
+    Every repair reported itself FAILED and the verification caught each one,
+    so nothing shipped -- but a repair strategy that cannot tell early from
+    late is a coin flip, and three of those in a row is not a control loop.
+
+    So: magnitude for the threshold, signed mean for the repair. Positive means
+    the dub comes in LATE and needs pulling earlier.
     """
     pairs, anomaly = align(reference, measured)
 
-    onsets = [abs(m.start_ms - r.start_ms) for r, m in pairs]
+    signed = [m.start_ms - r.start_ms for r, m in pairs]
+    onsets = [abs(x) for x in signed]
     overhangs = [m.end_ms - r.end_ms for r, m in pairs]
 
     worst_idx = onsets.index(max(onsets))
@@ -134,17 +155,20 @@ def sync_offset(
             "utterances": len(pairs),
             "p95_onset_ms": round(_percentile(onsets, 95), 1),
             "mean_onset_ms": round(statistics.fmean(onsets), 1),
+            # Signed, and the only thing here that says which way to shift.
+            "mean_signed_onset_ms": round(statistics.fmean(signed), 1),
+            "worst_signed_onset_ms": round(signed[worst_idx], 1),
             "max_end_overhang_ms": round(max(overhangs, key=abs), 1),
             "worst_utterance_index": worst_idx,
             "worst_utterance_ref": repr(pairs[worst_idx][0]),
             "worst_utterance_dub": repr(pairs[worst_idx][1]),
-            "drift_is_systematic": _is_systematic(onsets),
+            "drift_is_systematic": _is_systematic(signed),
             "anomaly": anomaly,
         },
     )
 
 
-def _is_systematic(onsets: list[float]) -> bool:
+def _is_systematic(signed: list[float]) -> bool:
     """True when every utterance drifts by a similar amount.
 
     Systematic drift means the whole stem is offset -- a muxing or padding fault,
@@ -152,10 +176,15 @@ def _is_systematic(onsets: list[float]) -> bool:
     fit their slots, which is a script-length problem no amount of shifting will
     solve. The agent branches on exactly this.
     """
-    if len(onsets) < 3:
+    onsets = [abs(x) for x in signed]
+    if len(signed) < 3:
         return False
-    spread = statistics.pstdev(onsets)
-    return spread < 0.25 * statistics.fmean(onsets) if statistics.fmean(onsets) else False
+    # Spread of the SIGNED drifts against the mean MAGNITUDE: lines slipping
+    # the same way by a similar amount is systematic; lines slipping opposite
+    # ways is not, however equal their magnitudes.
+    spread = statistics.pstdev(signed)
+    mean = statistics.fmean(onsets)
+    return spread < 0.25 * mean if mean else False
 
 
 def speech_rate_wpm(measured: list[Interval], word_count: int) -> Measurement:

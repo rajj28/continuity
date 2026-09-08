@@ -12,16 +12,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+import logging
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+
+log = logging.getLogger("continuity.store")
 
 CHUNK = 1 << 20  # 1 MiB
 
 AssetKind = Literal[
     "MASTER", "DIALOGUE_LIST", "SCENE_VIDEO", "SCENE_AUDIO", "TRANSCRIPT",
-    "TRANSLATION", "ADAPTED_LINE", "DUB_STEM", "SUBTITLE", "CAPTION", "PACKAGE",
+    "TRANSLATION", "ADAPTED_LINE", "DUB_STEM", "SUBTITLE", "CAPTION",
+    "AUDIO_DESCRIPTION", "FORCED_NARRATIVE", "METADATA", "PACKAGE",
 ]
 
 
@@ -114,7 +118,50 @@ class Store:
         return self.index / f"{asset_id.replace(':', '~')}.json"
 
     def record(self, asset: Asset) -> Path:
+        """Write the index entry, ASSIGNING the version rather than trusting it.
+
+        A version is a property of the asset's history. A caller cannot know it,
+        and this one learned that the hard way: re-running a build stage passes
+        `version=1`, because as far as that stage is concerned it is producing
+        the asset for the first time. It has no way to know that two repairs
+        already took the same asset to v3.
+
+        So a stage re-run silently replaced a repaired dub stem with an
+        unrepaired one AND rewound the counter to 1. The board then reported a
+        sync fault the system had already fixed, the lineage said the repair
+        never happened, and the only evidence it ever had was an orphaned QC
+        report nothing pointed at. Nothing errored. That is the worst shape a
+        data bug can take.
+
+        The store decides instead:
+
+          - nothing recorded yet        -> version 1
+          - identical bytes re-recorded -> keep the version, it is the same
+                                           asset and re-recording is idempotent
+          - different bytes             -> previous + 1, always forward
+
+        Superseding content is logged, because replacing an asset someone may
+        have repaired is worth a line in the record even when it is correct.
+        """
         path = self._index_path(asset.id)
+        version, previous = 1, None
+        if path.exists():
+            try:
+                previous = self.load(asset.id)
+            except (json.JSONDecodeError, TypeError, KeyError):
+                previous = None
+        if previous is not None:
+            if previous.sha256 == asset.sha256:
+                version = previous.version
+            else:
+                version = previous.version + 1
+                log.info(
+                    "superseding %s v%d (%s) with v%d (%s)",
+                    asset.id, previous.version, previous.sha256[:12],
+                    version, asset.sha256[:12],
+                )
+        if asset.version != version:
+            asset = replace(asset, version=version)
         path.write_text(
             json.dumps(asset.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
         )
