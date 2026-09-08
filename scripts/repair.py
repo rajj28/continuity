@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -42,10 +43,10 @@ from agents.intents import IntentStore, StaleIntent, check_fresh  # noqa: E402
 from agents.ledger import Ledger  # noqa: E402
 from agents.investigate import investigate  # noqa: E402
 from agents.mcp import grafana_client  # noqa: E402
-from agents.plan import Unplannable, plan_sync_repair  # noqa: E402
+from agents.plan import plan as plan_repairs  # noqa: E402
 from agents.repair import apply  # noqa: E402
 from agents.signal import Signal  # noqa: E402
-from agents.verify import record, verify  # noqa: E402
+from agents.verify import verify  # noqa: E402
 from agents.wake import Incident  # noqa: E402
 from media.qc.loudness import measure_loudness  # noqa: E402
 from media.qc.report import QCReport, QCStore  # noqa: E402
@@ -68,23 +69,26 @@ def reference_intervals(scene: dict) -> list[Interval]:
     ]
 
 
-def _deterministic(signal, args, genai):
+def _deterministic(signal, args, genai, investigation):
     """The model-free planner, for when the model is unavailable or unwanted.
 
     It handles the cases it was explicitly built for and refuses the rest --
-    which is the honest boundary. `Unplannable` here means the deterministic
-    rules do not cover this failure, not that nothing can be done.
+    which is the honest boundary. No plan here means the deterministic rules do
+    not cover this failure, not that nothing can be done.
     """
-    try:
-        intent = plan_sync_repair(
-            signal, title=args.title, market=args.market, scene=args.scene,
-        )
-    except Unplannable as exc:
-        print(f"\nNO PLAN: {exc}")
+    intents = plan_repairs(signal, investigation, scene=args.scene)
+    if not intents:
+        print(f"\nNO PLAN: the deterministic rules do not cover any of "
+              f"{investigation.subjects}. That is not the same as nothing "
+              f"being fixable -- the model may still have a strategy, and a "
+              f"rights failure has none at all.")
         genai.decision("planner", "unplannable")
         return None
+    # One repair per run, deliberately. Each is verified against its own
+    # prediction before the next is planned, so a second repair is decided with
+    # the first one's measured result in hand rather than guessed alongside it.
     genai.decision("planner", "deterministic")
-    return intent
+    return intents[0]
 
 
 def main() -> int:
@@ -162,7 +166,7 @@ def main() -> int:
                     genai.decision("authority", "stale_proposal")
                     return 1
             elif args.planner == "deterministic":
-                intent = _deterministic(signal, args, genai)
+                intent = _deterministic(signal, args, genai, inv)
                 if intent is None:
                     return 0
             else:
@@ -184,7 +188,7 @@ def main() -> int:
                     print("\nmodel budget spent; falling back to the "
                           "deterministic planner")
                     genai.decision("planner", "fell_back")
-                    intent = _deterministic(signal, args, genai)
+                    intent = _deterministic(signal, args, genai, inv)
                     if intent is None:
                         return 0
                 else:
@@ -222,8 +226,12 @@ def main() -> int:
             genai.step("act")
             asset = store.load(intent.target_asset_id)
             source = Path(asset.uri)
+            # Strip any existing version suffix before adding the new one, or
+            # a third repair produces S03_stem_v2_v3.wav and the name stops
+            # saying which version it is.
+            base = re.sub(r"_v\d+$", "", source.stem)
             repaired_path = source.with_name(
-                f"{source.stem}_v{asset.version + 1}{source.suffix}"
+                f"{base}_v{asset.version + 1}{source.suffix}"
             )
             with asset_span(
                 tracer, f"repair.{intent.strategy.value}", stage="repair",
@@ -300,9 +308,16 @@ def main() -> int:
 
             # -- learn --------------------------------------------------
             genai.step("learn")
+            # Appended to the durable ledger and NOT pushed as a counter from
+            # here. The state exporter is the single publisher of
+            # continuity_repairs_total; two writers under different job labels
+            # would double-count every repair in `sum by (outcome)`, and an
+            # autonomy figure that counts each success twice is worse than one
+            # that counts none.
             entry = ledger.append(result, market=args.market,
                                   asset_id=asset.id, sha256=sha)
-            record(instruments, result, market=args.market)
+            log.info("ledger: %s/%s in %s", entry.strategy, entry.outcome,
+                     entry.market)
             # A consumed proposal must not linger: an operator could otherwise
             # approve it twice and shift a stem that has already been shifted.
             intents.clear(args.title, args.market)

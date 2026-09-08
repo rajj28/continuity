@@ -21,6 +21,16 @@ from tests.test_wake import grafana_payload
 SYNC = 'dub_sync_offset_ms{market="de-DE",title="SINTEL"}'
 BAR = 'market_threshold{market="de-DE",requirement="dub_sync_max_ms"}'
 SHAPE = 'dub_drift_systematic{title="SINTEL",market="de-DE"}'
+LOUD_M = 'audio_loudness_lufs{market="de-DE",scene="S01",title="SINTEL"}'
+LOUD_T = 'market_threshold{market="de-DE",requirement="loudness_target_lufs"}'
+LOUD_TOL = 'market_threshold{market="de-DE",requirement="loudness_tolerance_lu"}'
+PEAK_T = 'market_threshold{market="de-DE",requirement="true_peak_max_dbtp"}'
+
+# A stem 5.17 LU louder than the -23 target, outside the +/- 1 band.
+LOUD = {
+    LOUD_M: [sample(-17.83)], LOUD_T: [sample(-23.0)],
+    LOUD_TOL: [sample(1.0)], PEAK_T: [sample(-2.0)],
+}
 
 
 def signal_for(**overrides) -> Signal:
@@ -215,6 +225,63 @@ def test_only_failures_we_have_a_strategy_for_are_planned():
 
 def test_an_investigation_we_cannot_act_on_yields_an_empty_plan():
     """Which the Conductor reads as 'escalate', not as 'nothing wrong'."""
-    investigation = investigation_for("loudness", "coverage")
+    investigation = investigation_for("rights_cleared", "coverage")
     assert plan(signal_for(), investigation) == []
-    assert unrepairable(investigation) == ["coverage", "loudness"]
+    assert unrepairable(investigation) == ["coverage", "rights_cleared"]
+
+
+def test_a_loudness_failure_is_planned_as_a_remix():
+    investigation = investigation_for("loudness")
+    intent, = plan(signal_for(**LOUD), investigation)
+    assert intent.strategy is Strategy.REMIX
+    assert intent.params == {"target_lufs": -23.0, "true_peak_max": -2.0}
+
+
+# ---------------------------------------------------------------------------
+# Loudness is a band, and that changes what a prediction may say
+# ---------------------------------------------------------------------------
+
+
+def test_a_band_repair_predicts_the_near_edge_not_the_target():
+    """Aiming at -23 would be wrong. Normalising lands NEAR the target, not on
+    it, so a repair arriving at -22.5 inside a +/- 1 band would be recorded as
+    having failed its own prediction -- punishing a repair that worked."""
+    from agents.plan import plan_loudness_repair
+
+    intent = plan_loudness_repair(signal_for(**LOUD), title="SINTEL",
+                                  market="de-DE", scene="S01")
+    assert intent.prediction.target_value == pytest.approx(-22.0)
+    assert intent.prediction.direction is Direction.DECREASE
+    assert intent.prediction.holds_for(-22.5)      # the real measured result
+    assert not intent.prediction.holds_for(-21.0)  # still too loud
+
+
+def test_a_stem_that_is_too_quiet_is_pushed_the_other_way():
+    answers = dict(LOUD)
+    answers[LOUD_M] = [sample(-27.0)]
+    from agents.plan import plan_loudness_repair
+
+    intent = plan_loudness_repair(signal_for(**answers), title="SINTEL",
+                                  market="de-DE", scene="S01")
+    assert intent.prediction.direction is Direction.INCREASE
+    assert intent.prediction.target_value == pytest.approx(-24.0)
+    assert "quieter" in intent.rationale
+
+
+def test_a_stem_already_inside_the_band_is_not_repaired():
+    answers = dict(LOUD)
+    answers[LOUD_M] = [sample(-22.6)]
+    from agents.plan import plan_loudness_repair
+
+    with pytest.raises(Unplannable, match="inside the -23"):
+        plan_loudness_repair(signal_for(**answers), title="SINTEL",
+                             market="de-DE", scene="S01")
+
+
+def test_a_remix_says_it_will_not_disturb_the_timing():
+    """The independence that makes two sequential repairs attributable."""
+    from agents.plan import plan_loudness_repair
+
+    intent = plan_loudness_repair(signal_for(**LOUD), title="SINTEL",
+                                  market="de-DE", scene="S01")
+    assert "cannot disturb the sync" in intent.rationale

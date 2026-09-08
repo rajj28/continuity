@@ -43,7 +43,7 @@ from agents.contracts import (
 )
 from agents.investigate import Investigation
 from agents.signal import Signal
-from telemetry.metrics import DRIFT_SYSTEMATIC, SYNC_OFFSET
+from telemetry.metrics import DRIFT_SYSTEMATIC, LOUDNESS, SYNC_OFFSET
 
 # How close to the threshold a repair should aim. Predicting exactly the
 # threshold would make a repair that lands on the boundary count as a success
@@ -54,7 +54,7 @@ SAFETY_MARGIN = 0.85
 # rather than attempted: a strategy invented for an unfamiliar failure is a
 # strategy with no measured history, which is exactly what the autonomy ladder
 # exists to keep away from production assets.
-REPAIRABLE = ("dub_sync",)
+REPAIRABLE = ("dub_sync", "loudness")
 
 
 class Unplannable(RuntimeError):
@@ -163,6 +163,80 @@ def plan_sync_repair(
     )
 
 
+def plan_loudness_repair(
+    signal: Signal, *, title: str, market: str, scene: str,
+    supersedes: str | None = None,
+) -> RepairIntent:
+    """Propose a REMIX for a stem outside its market's loudness band.
+
+    Loudness is a two-sided tolerance, so the prediction needs care. Aiming at
+    the target itself would be wrong: normalising to -23 LUFS lands somewhere
+    near it, not on it, and a repair that arrived at -22.5 inside a +/- 1 band
+    would be recorded as having failed its own prediction.
+
+    When a measurement is OUTSIDE a band, though, the repair is one-sided --
+    we know which edge we are beyond, so the honest prediction is "cross into
+    the band", i.e. reach the near edge. That is falsifiable, and it is true
+    exactly when the requirement is met.
+    """
+    observed = signal.measurement(LOUDNESS, title=title, market=market,
+                                  scene=scene)
+    target = signal.threshold(market, "loudness_target_lufs")
+    tolerance = signal.threshold(market, "loudness_tolerance_lu")
+    peak = signal.threshold(market, "true_peak_max_dbtp")
+    missing = [n for n, v in (("measurement", observed), ("target", target),
+                              ("tolerance", tolerance), ("peak ceiling", peak))
+               if v is None]
+    if missing:
+        raise Unplannable(
+            f"cannot plan a loudness repair for {market}: no "
+            f"{', no '.join(missing)}."
+        )
+
+    current = float(observed.value)          # type: ignore[union-attr]
+    aim = float(target.value)                # type: ignore[union-attr]
+    band = float(tolerance.value)            # type: ignore[union-attr]
+    ceiling = float(peak.value)              # type: ignore[union-attr]
+
+    if abs(current - aim) <= band:
+        raise Unplannable(
+            f"{market} loudness is {current:g} LUFS, inside the {aim:g} "
+            f"+/- {band:g} band; there is nothing to repair"
+        )
+
+    too_loud = current > aim
+    edge = aim + band if too_loud else aim - band
+    return RepairIntent(
+        strategy=Strategy.REMIX,
+        target_asset_id=f"{title}:{scene}:dub_stem:{market}",
+        params={"target_lufs": aim, "true_peak_max": ceiling},
+        prediction=Prediction(
+            series=LOUDNESS, market=market, scene=scene,
+            direction=Direction.DECREASE if too_loud else Direction.INCREASE,
+            target_value=edge, baseline=current,
+        ),
+        justification=[observed, target, tolerance],  # type: ignore[list-item]
+        tier=earned_tier(**signal.repair_history(Strategy.REMIX.value, market)),
+        supersedes=supersedes,
+        rationale=(
+            f"the stem is {abs(current - aim):.1f} LU "
+            f"{'louder' if too_loud else 'quieter'} than the {aim:g} LUFS "
+            f"target, outside the +/- {band:g} band. Normalising touches no "
+            f"timing, so it cannot disturb the sync."
+        ),
+    )
+
+
+# Which planner handles which failing requirement. A subject with no entry is
+# not something these rules know how to fix, which is a different statement
+# from "nothing can fix it" -- the model may still have a strategy, and a
+# rights failure has none at all.
+PLANNERS = {
+    "dub_sync": plan_sync_repair,
+    "loudness": plan_loudness_repair,
+}
+
+
 def plan(
     signal: Signal, investigation: Investigation, *, scene: str = "S01"
 ) -> list[RepairIntent]:
@@ -178,15 +252,16 @@ def plan(
     title, market = investigation.incident.title_id, investigation.incident.market
     intents: list[RepairIntent] = []
     for subject in investigation.subjects:
-        if subject not in REPAIRABLE:
+        planner = PLANNERS.get(subject)
+        if planner is None:
             continue
         try:
             intents.append(
-                plan_sync_repair(signal, title=title, market=market, scene=scene)
+                planner(signal, title=title, market=market, scene=scene)
             )
         except Unplannable:
-            # Kept out of the plan, not silenced: the Conductor sees an empty
-            # plan against a non-empty investigation and escalates.
+            # Kept out of the plan, not silenced: an empty plan against a
+            # non-empty investigation is what tells the Conductor to escalate.
             continue
     return intents
 
