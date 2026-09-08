@@ -27,6 +27,8 @@ from telemetry.otel import load_env  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE = "continuity-wake"
+# The name `gcloud run deploy --source` expects to find or create.
+REPOSITORY = "cloud-run-source-deploy"
 
 # Everything the wake path and its workers touch. Enabled explicitly rather
 # than on first use, so a missing permission surfaces here and not mid-repair.
@@ -37,12 +39,17 @@ APIS = (
     "pubsub.googleapis.com",
 )
 
-# Secrets the container needs. Passed as env vars rather than baked into the
+# What the container needs. Passed as env vars rather than baked into the
 # image: the image is a build artifact that outlives any one credential, and
 # these rotate after the hackathon.
+#
+# No Google credential appears here. The service runs AS a service account, so
+# Vertex authenticates from the metadata server -- a key file copied into a
+# container is a key file that can leak out of one.
 FORWARDED = (
     "WAKE_TOKEN",
-    "GEMINI_API_KEY",
+    "GCP_PROJECT_ID",
+    "GCP_VERTEX_LOCATION",
     "GRAFANA_URL",
     "GRAFANA_SERVICE_ACCOUNT_TOKEN",
     "OTLP_ENDPOINT",
@@ -110,26 +117,69 @@ def preflight(project: str) -> None:
     print(f"  APIs ready       ({len(APIS)} of {len(APIS)})")
 
 
-def env_flag(env: dict[str, str]) -> str:
-    """Build --set-env-vars, refusing to deploy a public endpoint with no token.
+def ensure_repository(project: str, region: str) -> None:
+    """Create the Artifact Registry repo `run deploy --source` needs.
 
-    Values are joined with `^@^` because Grafana URLs and base64 tokens both
-    contain commas' worse cousins, and gcloud's default comma delimiter mangles
-    them silently.
+    Created explicitly rather than left to gcloud, which offers to make it and
+    then WAITS ON A PROMPT. A deploy that blocks on stdin looks exactly like a
+    deploy that hung, and in CI or a background run it simply fails with an
+    empty error -- which is how this first went wrong.
+    """
+    existing = run(
+        "artifacts", "repositories", "list", f"--project={project}",
+        f"--location={region}", "--format=value(name)",
+    )
+    if REPOSITORY in existing:
+        print(f"  registry ready   ({REPOSITORY})")
+        return
+    print(f"  creating registry {REPOSITORY} in {region}")
+    run("artifacts", "repositories", "create", REPOSITORY,
+        "--repository-format=docker", f"--location={region}",
+        f"--project={project}",
+        "--description=Continuity Cloud Run source deploys", "--quiet")
+
+
+def write_env_file(env: dict[str, str], dest: Path) -> Path:
+    """Write the container's environment as YAML for --env-vars-file.
+
+    A file rather than --set-env-vars. The delimiter-escaping form
+    (`^@^KEY=v@KEY=v`) silently produced ONE variable literally named
+    `@WAKE_TOKEN` whose value was the entire concatenated string -- so the
+    service came up with no token and answered an unauthenticated POST with
+    200. It deployed successfully and was wrong, which is the worst way for a
+    credential to fail.
+
+    Grafana tokens are base64 and contain `=`; URLs contain `/` and `:`. YAML
+    quotes all of it and gcloud parses the file rather than the command line.
     """
     if not env.get("WAKE_TOKEN"):
         raise DeployError(
             "WAKE_TOKEN is unset. This service starts autonomous work on real "
             "assets from a public URL; it does not go up without a door on it."
         )
-    pairs = [f"{k}={env[k]}" for k in FORWARDED if env.get(k)]
-    return "^@^" + "@".join(pairs)
+    lines = []
+    for key in FORWARDED:
+        value = env.get(key)
+        if not value:
+            continue
+        # Single-quoted YAML, with the only escape that form needs.
+        lines.append(f"{key}: '{value.replace(chr(39), chr(39) * 2)}'")
+    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return dest
 
 
 def deploy(project: str, region: str, env: dict[str, str]) -> str:
+    ensure_repository(project, region)
+    # Written next to the deploy script and removed afterwards: it holds every
+    # token the service needs and has no business outliving the deploy.
+    env_file = write_env_file(env, ROOT / ".cloudrun-env.yaml")
     print(f"\ndeploying {SERVICE} to {region}")
     run(
         "run", "deploy", SERVICE,
+        # Never prompt. This runs unattended, and a question on stdin is
+        # indistinguishable from a hang -- the first deploy stalled on
+        # gcloud offering to create the Artifact Registry repository.
+        "--quiet",
         f"--source={ROOT}",
         f"--project={project}",
         f"--region={region}",
@@ -146,9 +196,14 @@ def deploy(project: str, region: str, env: dict[str, str]) -> str:
         # One instance keeps the in-process dedup set coherent until Pub/Sub
         # takes that job. Two instances would each start the same incident.
         "--max-instances=1",
-        f"--set-env-vars={env_flag(env)}",
+        # Runs as its own identity rather than the default compute account,
+        # which carries far more than this needs. Vertex, Storage and Pub/Sub
+        # access come from the roles bound to it, with no key in the image.
+        f"--service-account=continuity@{project}.iam.gserviceaccount.com",
+        f"--env-vars-file={env_file}",
         capture=False,
     )
+    env_file.unlink(missing_ok=True)
     url = run(
         "run", "services", "describe", SERVICE,
         f"--project={project}", f"--region={region}",

@@ -39,3 +39,6 @@ bin/cloudflared.exe
 
 # service-account key: a credential, never committed
 .gcp-continuity.json
+
+# transient: holds every token the deployed service needs
+.cloudrun-env.yaml
