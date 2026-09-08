@@ -43,7 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from agents.ledger import Ledger  # noqa: E402
+from agents.ledger import Ledger, RejectionLog, publish_rejections  # noqa: E402
 from agents.ledger import publish as publish_ledger  # noqa: E402
 from media.qc.profiles import load_profiles  # noqa: E402
 from media.qc.release import evaluate, technical_of  # noqa: E402
@@ -67,6 +67,46 @@ log = logging.getLogger("continuity.state")
 # faster just burns free-tier ingestion.
 DEFAULT_INTERVAL_S = 30.0
 TITLE = "SINTEL"
+
+# Which measurements each kind of asset is allowed to publish.
+#
+# Every series here is labelled {title, scene, market} and nothing else, so two
+# assets in the same market publishing the same key write to the SAME series
+# and silently overwrite one another. That is not hypothetical: the audio
+# description track and the dub stem both carry `delivery.audio_loudness_lufs`,
+# and once de-DE had both, the market's loudness check started evaluating
+# whichever of the two the exporter happened to reach last -- -22.96 LUFS from
+# the repaired dub, or -19.08 from the AD narration. The verdict flapped
+# between passing and blocked with nothing in the pipeline changing.
+#
+# The fix is not a tie-break, it is a definition. "Integrated loudness" as a
+# release requirement is a statement about the programme mix. The narration
+# track has its own loudness and its own spec, and if this system ever judges
+# that, it gets its own series name rather than borrowing the programme's.
+#
+# So each kind publishes only what it is authoritative for. A key measured but
+# not published still lives in the QC report on disk, where the omission is
+# recoverable; a key published by two assets is a number nobody can trust.
+PUBLISHED_BY_KIND: dict[str, set[str]] = {
+    "DUB_STEM": {
+        "delivery.dub_sync_offset_ms",
+        "delivery.line_overrun_ms",
+        "delivery.audio_loudness_lufs",
+        "delivery.audio_true_peak_dbtp",
+        "quality.speech_rate_wpm",
+        "quality.semantic_fidelity_score",
+    },
+    "AUDIO_DESCRIPTION": {
+        "accessibility.ad_collision_ms",
+        "accessibility.ad_coverage_ratio",
+    },
+    "SUBTITLE": {
+        "delivery.subtitle_reading_rate_cps",
+    },
+    "CAPTION": {
+        "delivery.subtitle_reading_rate_cps",
+    },
+}
 # The English copy a localised record must not still be. Kept here rather
 # than imported from stage 5 so the exporter does not depend on a script.
 SOURCE_SYNOPSIS = ("A lone warrior searches a hostile world for the "
@@ -82,6 +122,7 @@ class Cycle:
     assets: int = 0
     market_checks: int = 0
     repairs: int = 0
+    rejections: int = 0
     stale: int = 0
     unmeasured: int = 0
     diagnostics: int = 0
@@ -90,7 +131,8 @@ class Cycle:
         return (
             f"{self.thresholds} thresholds, {self.measurements} measurements, "
             f"{self.diagnostics} diagnostics, {self.market_checks} market "
-            f"checks, {self.repairs} ledger entries across {self.assets} "
+            f"checks, {self.repairs} ledger entries, {self.rejections} "
+            f"rejection reason(s) across {self.assets} "
             f"assets ({self.stale} stale, "
             f"{self.unmeasured} unmeasured)"
         )
@@ -123,6 +165,12 @@ def publish_once(
     # counter would age out five minutes after it exits -- and a
     # ladder that forgets everything every five minutes is not one.
     cycle.repairs = publish_ledger(instruments, Ledger(store.root))
+    # Guardrail refusals, for the same reason and by the same mechanism. A
+    # rejection counter that ages out five minutes after the conductor exits
+    # reports "nothing was ever refused", which is the one thing this series
+    # must never say when it is not true.
+    cycle.rejections = publish_rejections(
+        instruments, RejectionLog(store.root))
 
     # -- market-level: technical, rights, deliverables ---------------------
     # As perishable as every other fact here. A one-shot release check puts
@@ -186,6 +234,8 @@ def publish_once(
         }
         for measurement in report.measurements:
             if measurement.key not in MEASUREMENT_SERIES:
+                continue
+            if measurement.key not in PUBLISHED_BY_KIND.get(asset.kind, set()):
                 continue
             instruments.record_measurement(
                 measurement, title=asset.title_id, scene=asset.scene_id,

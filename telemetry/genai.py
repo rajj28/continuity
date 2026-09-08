@@ -23,12 +23,15 @@ Nothing here decides anything. It observes the deciding.
 
 from __future__ import annotations
 
+import logging
 import time
 from contextlib import contextmanager
 from typing import Any, Iterator
 
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
+
+log = logging.getLogger("continuity.genai")
 
 # ---- GenAI semantic conventions -------------------------------------------
 # Names from the OTel GenAI semconv rather than our own, so Grafana's LLM
@@ -64,10 +67,16 @@ DECISIONS = "continuity_agent_decisions_total"
 class GenAI:
     """Instrumentation for one agent's model calls and tool use."""
 
-    def __init__(self, tracer: trace.Tracer, instruments: Any, agent: str) -> None:
+    def __init__(self, tracer: trace.Tracer, instruments: Any, agent: str,
+                 *, rejections: Any = None) -> None:
         self.tracer = tracer
         self.instruments = instruments
         self.agent = agent
+        # Where refusals are written down so they outlive this process. Duck
+        # typed on purpose: `agents.ledger.RejectionLog` is what gets passed,
+        # and importing it here would point telemetry at agents and invert the
+        # dependency for the sake of one call.
+        self.rejections = rejections
 
     # -- model calls -------------------------------------------------------
 
@@ -199,16 +208,33 @@ class GenAI:
             DECISIONS, "Decisions the agent reached"
         ).add(1, {"agent": self.agent, "kind": kind, "outcome": outcome})
 
-    def rejected(self, reason: str, detail: str = "") -> None:
+    def rejected(self, reason: str, detail: str = "", *,
+                 title: str = "", market: str = "") -> None:
         """A model proposal the contracts refused.
 
         The measurement that makes the guardrails checkable rather than
         claimed. A counter flat at zero means either a well-behaved model or a
         guardrail that never fires, and only a time series can tell you which.
+
+        Written to disk as well as counted, when a log is attached. The
+        in-process counter belongs to a short-lived job: it starts at zero,
+        pushes one increment and exits, and Prometheus ages the series out five
+        minutes later. An empty panel then says "nothing was ever refused"
+        when the truth is "the evidence expired" -- which is precisely the
+        confusion this series exists to prevent.
         """
         self.instruments.counter(
             REJECTIONS, "Model proposals rejected by the contracts"
         ).add(1, {"agent": self.agent, "reason": reason})
+        if self.rejections is not None:
+            try:
+                self.rejections.append(reason, agent=self.agent, detail=detail,
+                                       title=title, market=market)
+            except OSError:
+                # A guardrail that fails to write its own audit line must still
+                # refuse the proposal. Losing the record is bad; letting a
+                # rejected repair through because the disk was full is worse.
+                log.warning("could not record rejection %s", reason)
         span = trace.get_current_span()
         if span is not None:
             span.add_event("proposal_rejected", {
