@@ -445,7 +445,15 @@ def _validate(
         genai.rejected("no_evidence", "proposal cited nothing")
         raise UnsupportedClaim("a repair with no cited evidence is not a repair")
 
-    series = str(args.get("predicted_series", ""))
+    # The model routinely answers with a full selector --
+    # `dub_sync_offset_ms{title="SINTEL",market="de-DE"}` -- where a bare
+    # metric name is wanted, because that is what it just queried. Verification
+    # maps the name through MEASUREMENT_SERIES to find the probe that
+    # re-measures it, and a selector maps to nothing, so the repair would run
+    # and then be unverifiable. Normalised rather than rejected: the metric
+    # name inside a selector is unambiguous, and refusing here would burn a
+    # turn on a proposal that was substantively right.
+    series = str(args.get("predicted_series", "")).split("{", 1)[0].strip()
     baseline = toolbox.gathered.get(
         next((q for q in cited if series and series in q), ""), None
     )

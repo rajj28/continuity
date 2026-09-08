@@ -379,3 +379,19 @@ def test_an_absent_series_is_reported_as_absent_not_zero(world):
     result = box.dispatch("query_metric", {"expr": "nonexistent_metric"})
     assert result["value"] is None
     assert "absent is not zero" in result["note"]
+
+
+def test_a_predicted_series_given_as_a_selector_is_normalised(world):
+    """The model answers with what it just queried -- a full selector -- where
+    a bare metric name is wanted. Verification maps the NAME to the probe that
+    re-measures it, so a selector would leave the repair unverifiable. The
+    metric name inside a selector is unambiguous, so it is normalised rather
+    than refused; rejecting would burn a turn on a proposal that was right."""
+    conclusion, instruments = run([
+        turn(gather()),
+        turn(good_proposal(predicted_series=SYNC, evidence_queries=[SYNC])),
+    ], world)
+
+    assert conclusion.acted
+    assert conclusion.intent.prediction.series == "dub_sync_offset_ms"
+    assert instruments.rejections() == {}

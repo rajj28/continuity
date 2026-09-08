@@ -7,9 +7,14 @@ opentelemetry-api==1.44.0
 opentelemetry-sdk==1.44.0
 opentelemetry-exporter-otlp-proto-http==1.44.0
 
-# Dubbing and reasoning. Live Translate needs the async live API, which
-# landed well before this pin.
+# Dubbing and reasoning.
 google-genai>=2.22.0
+
+# The Agent Development Kit runs the Conductor's tool loop and is the path to
+# Agent Engine. Pinned loose because it moves fast; note that installing it
+# downgrades opentelemetry-sdk, which the OTLP exporter above needs at 1.44 --
+# install requirements in order and the pin above wins.
+google-adk>=2.8.0
 
 # Provisioning rules, contact points and routes into Grafana.
 requests>=2.31

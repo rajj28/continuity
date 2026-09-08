@@ -94,22 +94,44 @@ def _client(vertex: bool, project: str, location: str, key: str):
     return genai.Client(api_key=key)
 
 
+def configure_environment(env: dict[str, str] | None = None) -> None:
+    """Export the variables OTHER Google libraries read to find the backend.
+
+    Our own code calls `client()`, but the Agent Development Kit builds its own
+    genai client and discovers the backend from the process environment. So the
+    choice made here has to be visible there too, or ADK falls back to looking
+    for a consumer API key and fails with "No API key was provided" while a
+    perfectly good service account sits in the same process.
+
+    Idempotent, and it never overrides something already set: an operator who
+    exported GOOGLE_CLOUD_PROJECT meant it.
+    """
+    env = env if env is not None else _env()
+    if not using_vertex(env):
+        if env.get("GEMINI_API_KEY"):
+            os.environ.setdefault("GOOGLE_API_KEY", env["GEMINI_API_KEY"])
+        return
+    credentials = (env.get("GOOGLE_APPLICATION_CREDENTIALS")
+                   or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""))
+    if credentials:
+        path = Path(credentials)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(
+            path if path.is_absolute() else ROOT / path
+        )
+    os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "TRUE")
+    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", env["GCP_PROJECT_ID"])
+    os.environ.setdefault(
+        "GOOGLE_CLOUD_LOCATION",
+        env.get("GCP_VERTEX_LOCATION", DEFAULT_LOCATION),
+    )
+
+
 def client(env: dict[str, str] | None = None):
     """The configured Gemini client. Cached: the SDK object is reusable and
     building one per call adds a credential refresh to every request."""
     env = env if env is not None else _env()
+    configure_environment(env)
     if using_vertex(env):
-        credentials = (
-            env.get("GOOGLE_APPLICATION_CREDENTIALS")
-            or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-        )
-        if credentials:
-            # Set for the SDK's own ADC lookup, which reads the process
-            # environment rather than our .env.local.
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(
-                Path(credentials) if Path(credentials).is_absolute()
-                else ROOT / credentials
-            )
         return _client(True, env["GCP_PROJECT_ID"],
                        env.get("GCP_VERTEX_LOCATION", DEFAULT_LOCATION), "")
 
