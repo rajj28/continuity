@@ -5,347 +5,888 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Continuity — Release Control Room</title>
 <style>
-  /* Status palette is reserved and never used for a category; identity uses
-     the validated categorical order. A verdict always carries a word as well
-     as a colour, so it survives greyscale and colour-blind reading. */
+  /* ================================================================
+     Two palettes doing two jobs, and never each other's.
+
+     STATUS   — can this ship — is the reserved scale. It always carries a
+                WORD as well as a colour, so the answer survives greyscale,
+                a projector, and a reader who cannot separate red from green.
+     IDENTITY — which strategy, which market — is the categorical order,
+                assigned by slot and never cycled.
+
+     Both were checked with a CVD validator rather than by eye. The identity
+     four pass every check against this surface (worst adjacent pair ΔE 8.4
+     protan, 19.8 normal). The status trio passes separation and contrast and
+     deliberately FAILS the categorical lightness band: a warning yellow is
+     meant to be brighter than a critical red, and equalising them would make
+     the scale worse at the only job it has. Do not "fix" that.
+     ================================================================ */
   :root {
     color-scheme: dark;
-    --bg:        #121211;
-    --surface:   #1a1a19;
-    --raised:    #232322;
-    --line:      #32322f;
-    --ink:       #f4f3ef;
+    --bg:        #0b0b0a;
+    --panel:     #131312;
+    --raised:    #1b1b19;
+    --sunken:    #080807;
+    --line:      #262623;
+    --line-2:    #35352f;
+    --ink:       #f6f5f1;
     --ink-2:     #a8a69c;
-    --ink-3:     #6f6d65;
+    --ink-3:     #6b6960;
+    --ink-4:     #4a4842;
+
     --good:      #0ca30c;
+    --good-ink:  #67d167;
     --warning:   #fab219;
-    --serious:   #ec835a;
+    --warning-ink:#e0b558;
     --critical:  #d03b3b;
-    --accent:    #3987e5;
-    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+    --critical-ink:#f08a8a;
+
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Consolas, monospace;
     --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --r: 7px;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased;
+    font: 13px/1.5 var(--sans); -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  a { color: var(--accent); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 6px;
+                              border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+  ::-webkit-scrollbar-track { background: transparent; }
 
+  /* Focus is visible everywhere. This screen is operated with a keyboard by
+     anyone who uses it more than twice. */
+  :focus-visible { outline: 2px solid var(--s1); outline-offset: 2px;
+                   border-radius: 3px; }
+  .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+  /* ---- chrome ------------------------------------------------------ */
   header {
-    display: flex; align-items: baseline; gap: 28px; flex-wrap: wrap;
-    padding: 18px 26px; border-bottom: 1px solid var(--line);
-    background: var(--surface); position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 20px; padding: 0 18px;
+    height: 56px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #161615, var(--panel));
+    position: sticky; top: 0; z-index: 40;
   }
-  .brand { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; }
-  .brand b { font-weight: 650; }
-  .brand span { color: var(--ink-3); }
-  .tally { display: flex; gap: 26px; margin-left: auto; align-items: baseline; }
-  .tally div { text-align: right; }
-  .tally .n { font: 600 26px/1 var(--mono); display: block; }
-  .tally .k { font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-              color: var(--ink-3); }
-  .stamp { font: 11px/1 var(--mono); color: var(--ink-3); }
+  .mark { font: 600 13px/1 var(--sans); letter-spacing: .2em; white-space: nowrap; }
+  .mark span { color: var(--ink-3); font-weight: 400; letter-spacing: .09em; }
+  .chip {
+    font: 600 11px/1 var(--mono); letter-spacing: .1em; padding: 6px 9px;
+    border: 1px solid var(--line-2); border-radius: 5px; color: var(--ink-2);
+    background: var(--raised);
+  }
+  .live { display: flex; align-items: center; gap: 7px; color: var(--ink-3);
+          font: 11px/1 var(--mono); white-space: nowrap; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good);
+         flex: none; animation: pulse 2.6s ease-out infinite; }
+  .dot.bad { background: var(--critical); animation: none; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(12,163,12,.5); }
+    70%  { box-shadow: 0 0 0 7px rgba(12,163,12,0); }
+    100% { box-shadow: 0 0 0 0 rgba(12,163,12,0); }
+  }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
 
-  main { display: grid; grid-template-columns: minmax(420px, 1.15fr) 1fr;
-         gap: 22px; padding: 22px 26px 60px; align-items: start; }
-  @media (max-width: 1080px) { main { grid-template-columns: 1fr; } }
+  .counts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .count { padding: 4px 12px; border-left: 1px solid var(--line); }
+  .count b { display: block; font: 600 20px/1.15 var(--mono);
+             font-variant-numeric: tabular-nums; }
+  .count i { font-style: normal; font-size: 9px; letter-spacing: .13em;
+             text-transform: uppercase; color: var(--ink-3); }
+  .count.ok b { color: var(--good-ink); } .count.no b { color: var(--critical-ink); }
 
-  h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
-       color: var(--ink-3); margin: 0 0 10px; font-weight: 600; }
+  button.ghost {
+    font: 500 12px var(--sans); color: var(--ink-2); background: var(--raised);
+    border: 1px solid var(--line-2); border-radius: 5px; padding: 7px 12px;
+    cursor: pointer; margin-left: 8px; white-space: nowrap;
+  }
+  button.ghost:hover { color: var(--ink); border-color: var(--ink-4); }
+  button.ghost[data-on="1"] { color: var(--good-ink);
+                              border-color: rgba(12,163,12,.45); }
 
-  .card { background: var(--surface); border: 1px solid var(--line);
-          border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
+  /* ---- sign-in popover. NOT window.prompt(): a browser modal blocks the
+     page, cannot be styled, shows the token in a dialog the operator cannot
+     see the context of, and is suppressed outright in some embeds. ---- */
+  .pop { position: fixed; right: 18px; top: 62px; z-index: 50; width: 320px;
+         background: var(--panel); border: 1px solid var(--line-2);
+         border-radius: var(--r); box-shadow: var(--shadow); padding: 14px; }
+  .pop h3 { margin: 0 0 6px; font: 600 12px/1.4 var(--sans); }
+  .pop p { margin: 0 0 10px; font-size: 11px; color: var(--ink-3); line-height: 1.55; }
+  .pop input {
+    width: 100%; padding: 8px 10px; border-radius: 5px; background: var(--sunken);
+    border: 1px solid var(--line-2); color: var(--ink);
+    font: 12px var(--mono); margin-bottom: 10px;
+  }
+  .pop .row { display: flex; gap: 8px; }
 
-  /* --- market rows ------------------------------------------------- */
-  .mkt { display: grid; grid-template-columns: 8px 1fr auto; gap: 0;
-         border-bottom: 1px solid var(--line); cursor: pointer;
-         background: none; border-left: 0; border-right: 0; border-top: 0;
-         width: 100%; text-align: left; color: inherit; font: inherit;
-         padding: 0; }
-  .mkt:last-child { border-bottom: 0; }
-  .mkt:hover, .mkt[aria-selected="true"] { background: var(--raised); }
-  .mkt .bar { background: var(--critical); }
-  .mkt.ready .bar { background: var(--good); }
-  .mkt.unknown .bar { background: var(--ink-3); }
-  .mkt .body { padding: 13px 16px; min-width: 0; }
-  .mkt .top { display: flex; align-items: baseline; gap: 10px; }
-  .mkt .code { font: 600 14px/1 var(--mono); }
-  .mkt .name { color: var(--ink-2); font-size: 13px; }
-  .verdict { font: 600 10px/1 var(--mono); letter-spacing: .1em;
-             padding: 4px 7px; border-radius: 4px; }
-  .verdict.no  { background: rgba(208,59,59,.16);  color: #f08a8a; }
-  .verdict.yes { background: rgba(12,163,12,.18);  color: #63d063; }
-  .verdict.unk { background: rgba(111,109,101,.2); color: var(--ink-2); }
-  .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-  .tag { font-size: 11px; padding: 3px 7px; border-radius: 4px;
-         background: rgba(208,59,59,.12); color: #eb9a9a;
-         border: 1px solid rgba(208,59,59,.25); }
-  .tag.hard { background: rgba(250,178,25,.1); color: #e0b558;
-              border-color: rgba(250,178,25,.3); }
-  .mkt .cov { padding: 13px 16px; text-align: right; white-space: nowrap; }
-  .cov .frac { font: 12px/1 var(--mono); color: var(--ink-2); }
-  .meter { width: 82px; height: 4px; border-radius: 2px; margin-top: 7px;
-           background: var(--line); overflow: hidden; }
-  .meter i { display: block; height: 100%; background: var(--warning); }
-  .meter.full i { background: var(--good); }
-  .pill { display:inline-block; margin-top:8px; font: 600 10px/1 var(--mono);
-          letter-spacing:.08em; color: #7fb0f0; background: rgba(57,135,229,.14);
-          border: 1px solid rgba(57,135,229,.3); padding: 4px 7px;
-          border-radius: 4px; }
+  /* ---- layout ------------------------------------------------------ */
+  main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(370px, 1fr);
+         gap: 16px; padding: 16px 18px 56px; align-items: start; }
+  @media (max-width: 1200px) { main { grid-template-columns: 1fr; } }
+  section { min-width: 0; }
+  .stick { position: sticky; top: 72px; }
+  @media (max-width: 1200px) { .stick { position: static; } }
 
-  /* --- detail ------------------------------------------------------- */
-  .pad { padding: 15px 17px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: 10px; letter-spacing: .1em;
-       text-transform: uppercase; color: var(--ink-3); font-weight: 600;
-       padding: 0 0 8px; }
-  td { padding: 7px 0; border-top: 1px solid var(--line); vertical-align: top; }
-  td.num { font: 13px/1.4 var(--mono); text-align: right; white-space: nowrap; }
-  td.num.fail { color: #f08a8a; }
-  td.num.pass { color: #63d063; }
-  .q { font: 11px/1.5 var(--mono); color: var(--ink-3); word-break: break-all;
-       display: block; margin-top: 3px; }
-
-  .prop { border-left: 3px solid var(--accent); background: var(--raised); }
-  .prop dl { display: grid; grid-template-columns: 96px 1fr; gap: 7px 14px;
-             margin: 0 0 14px; }
-  .prop dt { font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
-             color: var(--ink-3); padding-top: 3px; }
-  .prop dd { margin: 0; font-size: 13px; }
-  .prop dd.mono { font-family: var(--mono); font-size: 12px; }
-  button.go { font: 600 13px var(--sans); padding: 9px 16px; border-radius: 7px;
-              border: 0; background: var(--accent); color: #fff; cursor: pointer; }
-  button.go:hover { filter: brightness(1.1); }
-  button.go:disabled { opacity: .5; cursor: progress; }
-  .why { color: var(--ink-2); font-size: 12px; margin: 10px 0 0; }
-
-  .row { display: flex; justify-content: space-between; gap: 12px;
-         padding: 9px 0; border-top: 1px solid var(--line); font-size: 13px; }
-  .row:first-of-type { border-top: 0; }
-  .out { font: 600 10px/1 var(--mono); letter-spacing: .08em; padding: 4px 7px;
-         border-radius: 4px; }
-  .out.succeeded { background: rgba(12,163,12,.18); color: #63d063; }
-  .out.lucky     { background: rgba(250,178,25,.14); color: #e0b558; }
-  .out.failed    { background: rgba(208,59,59,.16); color: #f08a8a; }
+  h2 { font: 600 10px/1 var(--sans); letter-spacing: .16em;
+       text-transform: uppercase; color: var(--ink-3); margin: 0 0 9px;
+       display: flex; align-items: baseline; gap: 10px; }
+  h2 em { font-style: normal; color: var(--ink-4); letter-spacing: 0;
+          text-transform: none; font-size: 11px; }
+  h2 .spacer { margin-left: auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+           border-radius: var(--r); margin-bottom: 18px; overflow: hidden; }
+  .pad { padding: 14px 16px; }
   .muted { color: var(--ink-3); }
-  pre.log { margin: 12px 0 0; padding: 12px; background: #0e0e0d;
-            border: 1px solid var(--line); border-radius: 7px; max-height: 300px;
-            overflow: auto; font: 11px/1.6 var(--mono); color: var(--ink-2);
-            white-space: pre-wrap; }
-  .err { color: #f08a8a; padding: 15px 17px; font-size: 13px; }
+  .why { margin: 9px 0 0; font-size: 11px; line-height: 1.6; color: var(--ink-3); }
+  code { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+  a.out { color: #8ab8f2; text-decoration: none; white-space: nowrap; }
+  a.out:hover { text-decoration: underline; }
+
+  /* ---- banner (errors surface here; panels keep their content) ---- */
+  #banner { display: none; margin: 0 18px; padding: 10px 14px; font-size: 12px;
+            border-radius: var(--r); background: rgba(208,59,59,.12);
+            border: 1px solid rgba(208,59,59,.35); color: var(--critical-ink); }
+  #banner[data-show="1"] { display: block; }
+
+  /* ---- the needs-you strip ---------------------------------------- */
+  .needs { border: 1px solid rgba(57,135,229,.4); background: rgba(57,135,229,.07);
+           border-radius: var(--r); padding: 11px 14px; margin-bottom: 18px;
+           display: flex; align-items: center; gap: 12px; font-size: 12px; }
+  .needs b { color: #a9cbf5; }
+
+  /* ---- the matrix -------------------------------------------------- */
+  .scroll { overflow-x: auto; }
+  table.matrix { width: 100%; border-collapse: collapse; min-width: 720px; }
+  table.matrix th {
+    font: 600 9px/1.35 var(--sans); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-3); text-align: center; padding: 12px 5px 10px;
+    border-bottom: 1px solid var(--line); vertical-align: bottom;
+  }
+  table.matrix th.left { text-align: left; padding-left: 16px; }
+  table.matrix td { border-bottom: 1px solid var(--line); padding: 0; }
+  table.matrix tr:last-child td { border-bottom: 0; }
+  tr.row { cursor: pointer; transition: background .12s ease; }
+  tr.row:hover td { background: var(--raised); }
+  tr.row[aria-selected="true"] td { background: var(--raised); }
+  tr.row[aria-selected="true"] td.mkt { box-shadow: inset 3px 0 0 var(--s1); }
+  tr.row:focus-visible { outline: none; }
+  tr.row:focus-visible td { background: var(--raised);
+                            box-shadow: inset 0 0 0 1px var(--s1); }
+  td.mkt { padding: 11px 10px 11px 16px; white-space: nowrap; }
+  .code { font: 600 13px/1 var(--mono); }
+  .place { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+  td.cell { text-align: center; padding: 11px 5px; }
+  .pips { display: flex; gap: 3px; justify-content: center; }
+  .pip { width: 9px; height: 9px; border-radius: 2px; background: var(--good);
+         flex: none; }
+  .pip.fail { background: var(--critical); }
+  .pip.unmeasured { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
+  /* Hatched, not merely a different red: "failing and nothing here can fix it"
+     is a different KIND of fact from "failing", and a hue step alone would
+     make it look like a severity. */
+  .pip.fail.hard { background: repeating-linear-gradient(
+      45deg, var(--critical), var(--critical) 2px, #7a2020 2px, #7a2020 4px); }
+  td.verdict { padding: 11px 16px 11px 8px; text-align: right; white-space: nowrap; }
+  .tag { font: 600 9px/1 var(--mono); letter-spacing: .11em; padding: 5px 7px;
+         border-radius: 3px; display: inline-block; }
+  .tag.ready   { background: rgba(12,163,12,.16);  color: var(--good-ink); }
+  .tag.blocked { background: rgba(208,59,59,.14);  color: var(--critical-ink); }
+  .tag.unjudged{ background: rgba(107,105,96,.2);  color: var(--ink-2); }
+  .cov { font: 11px/1 var(--mono); color: var(--ink-3); margin-top: 6px;
+         font-variant-numeric: tabular-nums; }
+  .flag { display: inline-block; margin-top: 6px; font: 600 9px/1 var(--mono);
+          letter-spacing: .08em; color: #a9cbf5; background: rgba(57,135,229,.13);
+          border: 1px solid rgba(57,135,229,.32); padding: 4px 6px;
+          border-radius: 3px; }
+
+  .legend { display: flex; gap: 16px; padding: 10px 16px; flex-wrap: wrap;
+            border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-3); }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+
+  /* ---- the timeline ------------------------------------------------
+     Bands, not a line chart. The value is binary, and a line between 0 and 1
+     draws intermediate states that do not exist. Absence stays absent: the
+     track shows through wherever there was no verdict, because "not yet
+     measured" is not "not ready". ---- */
+  .tl { display: grid; grid-template-columns: 62px 1fr; gap: 6px 10px;
+        align-items: center; padding: 14px 16px 6px; }
+  .tl .lbl { font: 600 11px/1 var(--mono); color: var(--ink-2); text-align: right; }
+  .track { position: relative; height: 15px; border-radius: 3px;
+           background: var(--sunken);
+           background-image: repeating-linear-gradient(45deg,
+             transparent, transparent 3px, #17171500 3px, #1d1d1a 6px);
+           box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+  .seg { position: absolute; top: 0; bottom: 0; }
+  .seg.ready   { background: var(--good); }
+  .seg.blocked { background: var(--critical); opacity: .82; }
+  .axis { display: flex; justify-content: space-between; padding: 2px 16px 12px 88px;
+          font: 10px/1 var(--mono); color: var(--ink-4); }
+
+  /* ---- detail ------------------------------------------------------ */
+  table.rows { width: 100%; border-collapse: collapse; }
+  table.rows th { text-align: left; font: 600 9px/1 var(--sans);
+                  letter-spacing: .1em; text-transform: uppercase;
+                  color: var(--ink-3); padding: 0 0 8px; }
+  table.rows td { padding: 8px 0; border-top: 1px solid var(--line);
+                  vertical-align: top; }
+  table.rows tr:first-child td { border-top: 0; }
+  td.n { font: 12px/1.4 var(--mono); text-align: right; white-space: nowrap;
+         font-variant-numeric: tabular-nums; }
+  td.n.fail { color: var(--critical-ink); } td.n.pass { color: var(--good-ink); }
+  .q { display: block; font: 10px/1.5 var(--mono); color: #828075;
+       word-break: break-all; margin-top: 3px; }
+
+  /* Same three shapes as the matrix pips, so the vocabulary is learned once. */
+  .mk { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+        margin-right: 8px; background: var(--good); }
+  .mk.fail { background: repeating-linear-gradient(
+      45deg, var(--critical), var(--critical) 2px, #7a2020 2px, #7a2020 4px); }
+  .mk.unknown { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
+
+  /* Blast radius. An arrow, because the direction is the whole point: this
+     panel reads downstream where the lineage panel reads upstream. */
+  .blast { padding: 6px 0; border-top: 1px solid var(--line);
+           font: 11px/1.6 var(--mono); }
+  .blast:first-child { border-top: 0; }
+  .blast .from { color: var(--ink); }
+  .blast .to { color: var(--ink-2); display: block; padding-left: 14px; }
+  .blast .to .arr { color: var(--ink-4); }
+  .blast .to.stale { color: var(--warning-ink); }
+  .count-pill { font: 600 9px/1 var(--mono); letter-spacing: .06em;
+                padding: 3px 6px; border-radius: 3px; margin-left: 6px;
+                background: rgba(57,135,229,.13); color: #a9cbf5; }
+
+  /* Guardrails. A refusal is a good outcome, so this is not styled as an
+     error -- it is the record of the contracts doing their job. */
+  .guard { display: flex; align-items: baseline; justify-content: space-between;
+           gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .guard:first-child { border-top: 0; }
+  .guard .reason { font: 11px/1.5 var(--mono); color: var(--ink-2); }
+  .guard .n { font: 600 12px/1 var(--mono); color: var(--warning-ink);
+              font-variant-numeric: tabular-nums; }
+
+  .prop { border-left: 3px solid var(--s1); background: var(--raised); }
+  dl.kv { display: grid; grid-template-columns: 88px 1fr; gap: 7px 14px;
+          margin: 0 0 13px; }
+  dl.kv dt { font: 600 9px/1.6 var(--sans); letter-spacing: .1em;
+             text-transform: uppercase; color: var(--ink-3); }
+  dl.kv dd { margin: 0; font-size: 12px; }
+  dl.kv dd.mono { font-family: var(--mono); font-size: 11px; }
+
+  button.go {
+    font: 600 12px var(--sans); background: var(--s1); color: #fff; border: 0;
+    border-radius: 5px; padding: 9px 15px; cursor: pointer;
+  }
+  button.go:hover:not(:disabled) { filter: brightness(1.12); }
+  button.go:disabled { opacity: .45; cursor: not-allowed; }
+  button.go.alt { background: var(--raised); color: var(--ink);
+                  box-shadow: inset 0 0 0 1px var(--line-2); }
+
+  /* ---- live trace -------------------------------------------------- */
+  .trace { max-height: 320px; overflow: auto; font: 11px/1.65 var(--mono); }
+  .ev { display: flex; gap: 9px; padding: 5px 0; border-top: 1px solid var(--line);
+        animation: in .18s ease-out; }
+  .ev:first-child { border-top: 0; }
+  @keyframes in { from { opacity: 0; transform: translateY(-2px); } }
+  @media (prefers-reduced-motion: reduce) { .ev { animation: none; } }
+  .k { flex: none; width: 68px; font: 600 9px/1.7 var(--mono);
+       letter-spacing: .06em; text-transform: uppercase; color: var(--ink-4); }
+  .k.tool { color: #8ab8f2; } .k.finding { color: var(--good-ink); }
+  .k.conclusion { color: var(--warning-ink); } .k.error { color: var(--critical-ink); }
+  .ev > span:last-child { min-width: 0; word-break: break-word; }
+
+  .bar { display: flex; justify-content: space-between; gap: 12px;
+         padding: 8px 0; border-top: 1px solid var(--line); font-size: 12px; }
+  .bar:first-child { border-top: 0; }
+  .out-tag { font: 600 9px/1 var(--mono); letter-spacing: .08em; padding: 5px 7px;
+             border-radius: 3px; white-space: nowrap; }
+  .out-tag.succeeded { background: rgba(12,163,12,.22);  color: #7ede7e;
+                       box-shadow: inset 0 0 0 1px rgba(12,163,12,.42); }
+  .out-tag.lucky     { background: rgba(250,178,25,.18); color: #f0c96e;
+                       box-shadow: inset 0 0 0 1px rgba(250,178,25,.4); }
+  .out-tag.failed    { background: rgba(208,59,59,.2);   color: #f5a0a0;
+                       box-shadow: inset 0 0 0 1px rgba(208,59,59,.45); }
+  pre.log { margin: 11px 0 0; padding: 11px; background: var(--sunken);
+            border: 1px solid var(--line); border-radius: 6px;
+            max-height: 260px; overflow: auto; font: 10px/1.6 var(--mono);
+            color: var(--ink-2); white-space: pre-wrap; }
+  .asset { display: flex; justify-content: space-between; gap: 10px;
+           padding: 6px 0; border-top: 1px solid var(--line);
+           font: 11px/1.5 var(--mono); }
+  .asset:first-child { border-top: 0; }
+  .asset .stale { color: var(--warning-ink); }
+
+  /* ---- skeleton ---------------------------------------------------- */
+  .sk { height: 11px; border-radius: 3px; background: var(--raised);
+        animation: sh 1.3s ease-in-out infinite; }
+  @keyframes sh { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 </style>
 </head>
 <body>
 <header>
-  <div class="brand"><b>CONTINUITY</b> <span>/ Release Control Room</span></div>
-  <div class="stamp" id="stamp">connecting…</div>
-  <div class="tally">
-    <div><span class="n" id="n-ready">–</span><span class="k">Ready</span></div>
-    <div><span class="n" id="n-blocked">–</span><span class="k">Blocked</span></div>
+  <div class="mark">CONTINUITY <span>Release Control Room</span></div>
+  <div class="chip" id="title">—</div>
+  <div class="live"><span class="dot" id="dot"></span><span id="stamp">connecting</span></div>
+  <div class="counts">
+    <div class="count ok"><b id="n-ready">–</b><i>Ready</i></div>
+    <div class="count no"><b id="n-blocked">–</b><i>Blocked</i></div>
+    <div class="count"><b id="n-checks">–</b><i>Checks</i></div>
+    <button class="ghost" id="signin" aria-haspopup="dialog" aria-expanded="false">
+      Operator sign-in</button>
   </div>
 </header>
 
+<div id="banner" role="alert"></div>
+
 <main>
   <section>
-    <h2>Markets</h2>
-    <div class="card" id="markets"><div class="pad muted">Loading…</div></div>
+    <div id="needs"></div>
 
-    <h2>Earned autonomy</h2>
-    <div class="card" id="autonomy"><div class="pad muted">No repair history yet.</div></div>
-  </section>
-
-  <section>
-    <h2 id="detail-title">Select a market</h2>
-    <div class="card" id="detail">
-      <div class="pad muted">
-        Every number here is read from Grafana through the same interface the
-        agents use, and each one shows the query that produced it.
+    <h2>Release readiness <em>every market, every dimension</em>
+      <span class="spacer"></span>
+      <span class="muted" style="font-size:10px;letter-spacing:0;text-transform:none">
+        ↑↓ to move · Enter to investigate</span></h2>
+    <div class="panel">
+      <div class="scroll">
+        <table class="matrix" id="matrix">
+          <thead><tr id="head"></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span><i class="pip"></i> passing</span>
+        <span><i class="pip fail"></i> failing</span>
+        <span><i class="pip fail hard"></i> failing, unrepairable here</span>
+        <span><i class="pip unmeasured"></i> never measured</span>
+        <span class="muted">— one pip per check. Grafana computes every one.</span>
       </div>
     </div>
 
+    <h2>Readiness over time <em>the last six hours</em></h2>
+    <div class="panel">
+      <div class="tl" id="timeline"></div>
+      <div class="axis"><span id="t-from">−6h</span><span>now</span></div>
+      <div class="legend">
+        <span><i class="pip"></i> ready</span>
+        <span><i class="pip fail"></i> blocked</span>
+        <span><i class="pip unmeasured"></i> no verdict — nothing was measured yet</span>
+        <span class="muted">— a gap is not a pass.</span>
+      </div>
+    </div>
+
+    <h2>Agent activity <em>live, as it reasons</em></h2>
+    <div class="panel"><div class="pad trace" id="trace" aria-live="polite">
+      <span class="muted">Select a market and run an investigation.</span>
+    </div></div>
+
+    <h2>Earned autonomy <em>read from Prometheus at decision time</em></h2>
+    <div class="panel" id="autonomy"><div class="pad muted">No repair history yet.</div></div>
+
+    <h2>Guardrails <em>proposals the contracts refused</em></h2>
+    <div class="panel" id="guardrails"><div class="pad muted">
+      Nothing has been refused yet.</div></div>
+  </section>
+
+  <section class="stick">
+    <h2 id="detail-h">Market detail</h2>
+    <div class="panel" id="detail"><div class="pad muted">
+      Select a market. Every figure is read through the same interface the
+      agents use, and shows the query that produced it.
+    </div></div>
+
     <h2>Recent repairs</h2>
-    <div class="card" id="activity"><div class="pad muted">Nothing yet.</div></div>
+    <div class="panel" id="activity"><div class="pad muted">Nothing yet.</div></div>
   </section>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
-let selected = null;
-let busy = false;
-
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let selected = null, board = null, busy = false, lastAt = null;
 
-function verdictClass(ready) {
-  return ready === true ? "yes" : ready === false ? "no" : "unk";
+/* ---- operator token -------------------------------------------------
+   sessionStorage, not localStorage: this authorises real work on real
+   assets, and it should not outlive the tab it was typed into. Wrapped
+   because a browser with site data blocked throws on access rather than
+   returning null. ------------------------------------------------------ */
+function token() { try { return sessionStorage.getItem("op") || ""; } catch { return ""; } }
+function authHeaders() {
+  const t = token();
+  return t ? {"Authorization": "Bearer " + t} : {};
 }
-function verdictWord(ready) {
-  // A word as well as a colour: the answer must survive greyscale.
-  return ready === true ? "READY" : ready === false ? "BLOCKED" : "UNJUDGED";
-}
-
-function renderMarkets(markets) {
-  $("markets").innerHTML = markets.map(m => {
-    const cls = m.ready === true ? "ready" : m.ready === null ? "unknown" : "";
-    const pct = m.owed ? Math.round(100 * m.present / m.owed) : 0;
-    const tags = m.blockers.map(b =>
-      `<span class="tag ${b.repairable ? "" : "hard"}" title="${esc(b.requirement)}">${esc(b.dimension)}: ${esc(b.label)}</span>`
-    ).join("");
-    return `<button class="mkt ${cls}" data-m="${esc(m.market)}"
-              aria-selected="${selected === m.market}">
-      <span class="bar"></span>
-      <span class="body">
-        <span class="top">
-          <span class="code">${esc(m.market)}</span>
-          <span class="name">${esc(m.name)}</span>
-          <span class="verdict ${verdictClass(m.ready)}">${verdictWord(m.ready)}</span>
-        </span>
-        ${tags ? `<span class="tags">${tags}</span>` : ""}
-        ${m.pending ? `<span class="pill">PROPOSAL AWAITING APPROVAL</span>` : ""}
-      </span>
-      <span class="cov">
-        <span class="frac">${m.present}/${m.owed}</span>
-        <span class="meter ${pct >= 100 ? "full" : ""}"><i style="width:${pct}%"></i></span>
-      </span>
-    </button>`;
-  }).join("");
-  document.querySelectorAll(".mkt").forEach(el =>
-    el.onclick = () => select(el.dataset.m));
+function markSignedIn() {
+  const on = !!token();
+  $("signin").textContent = on ? "Operator signed in" : "Operator sign-in";
+  $("signin").dataset.on = on ? "1" : "0";
 }
 
-function renderAutonomy(rows) {
-  if (!rows.length) return;
-  $("autonomy").innerHTML = `<div class="pad"><table>
-    <tr><th>Strategy</th><th>Market</th><th>Record</th><th>Authority</th></tr>
-    ${rows.map(r => `<tr>
-      <td style="font-family:var(--mono)">${esc(r.strategy)}</td>
-      <td style="font-family:var(--mono)">${esc(r.market)}</td>
-      <td class="muted">${r.succeeded} understood · ${r.lucky} lucky · ${r.failed} failed</td>
-      <td style="font-family:var(--mono);font-size:12px">${esc(r.tier)}</td>
-    </tr>`).join("")}
-  </table>
-  <p class="why">Read from Prometheus at decision time, never held in agent
-  memory. A <em>lucky</em> repair passed while its prediction did not hold: it
-  raises the denominator without raising the numerator, so getting away with it
-  costs authority rather than earning it.</p></div>`;
+let pop = null;
+function closePop() {
+  if (pop) { pop.remove(); pop = null; }
+  $("signin").setAttribute("aria-expanded", "false");
 }
-
-function renderActivity(rows) {
-  if (!rows.length) return;
-  $("activity").innerHTML = `<div class="pad">${rows.map(r => `
+$("signin").onclick = () => {
+  if (pop) { closePop(); return; }
+  pop = document.createElement("div");
+  pop.className = "pop"; pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", "Operator sign-in");
+  pop.innerHTML = `
+    <h3>Operator token</h3>
+    <p>Reading this board needs nothing. Running an investigation or approving
+       a repair starts real work on real assets, so those need the token.
+       It is kept for this tab only.</p>
+    <input id="tok" type="password" autocomplete="off" spellcheck="false"
+           placeholder="WAKE_TOKEN" value="${esc(token())}">
     <div class="row">
-      <span>
-        <b style="font-family:var(--mono)">${esc(r.strategy)}</b>
-        <span class="muted"> ${esc(r.market)}</span><br>
-        <span class="q">${esc(r.predicted)} → measured ${r.observed}</span>
-      </span>
-      <span style="text-align:right;white-space:nowrap">
-        <span class="out ${esc(r.outcome)}">${esc(r.outcome.toUpperCase())}</span><br>
-        <span class="q">${esc((r.at||"").slice(0,16).replace("T"," "))}</span>
-      </span>
-    </div>`).join("")}</div>`;
+      <button class="go" id="tok-save">Save</button>
+      <button class="go alt" id="tok-clear">Sign out</button>
+    </div>`;
+  document.body.appendChild(pop);
+  $("signin").setAttribute("aria-expanded", "true");
+  const input = $("tok");
+  input.focus(); input.select();
+  const save = () => {
+    try { sessionStorage.setItem("op", input.value.trim()); } catch {}
+    markSignedIn(); closePop(); if (selected) select(selected);
+  };
+  $("tok-save").onclick = save;
+  input.onkeydown = (e) => {
+    if (e.key === "Enter") save();
+    if (e.key === "Escape") closePop();
+  };
+  $("tok-clear").onclick = () => {
+    try { sessionStorage.removeItem("op"); } catch {}
+    markSignedIn(); closePop();
+  };
+};
+document.addEventListener("click", (e) => {
+  if (pop && !pop.contains(e.target) && e.target !== $("signin")) closePop();
+});
+
+/* ---- banner: errors go here so panels keep the last good truth on
+   screen. A control room that blanks itself on a transient 502 is worse
+   than one that shows a stale number and says so. --------------------- */
+function fail(message) {
+  const b = $("banner");
+  b.textContent = message;
+  b.dataset.show = "1";
+  $("dot").className = "dot bad";
+}
+function clearFail() { $("banner").dataset.show = "0"; $("dot").className = "dot"; }
+
+/* ---- time ----------------------------------------------------------- */
+function ago(iso) {
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+  if (s < 60) return Math.round(s) + "s ago";
+  if (s < 3600) return Math.round(s / 60) + "m ago";
+  return Math.round(s / 3600) + "h ago";
+}
+setInterval(() => { if (lastAt) $("stamp").textContent = "live · read " + ago(lastAt); }, 5000);
+
+/* ---- the matrix ------------------------------------------------------ */
+function verdictWord(r) { return r === true ? "READY" : r === false ? "BLOCKED" : "UNJUDGED"; }
+function verdictClass(r) { return r === true ? "ready" : r === false ? "blocked" : "unjudged"; }
+
+function renderBoard(d) {
+  board = d;
+  $("title").textContent = d.title;
+  $("n-ready").textContent = d.ready;
+  $("n-blocked").textContent = d.blocked;
+  $("n-checks").textContent = d.checks_total;
+  lastAt = d.at;
+  $("stamp").textContent = "live · read " + ago(d.at);
+
+  const waiting = d.markets.filter(m => m.pending);
+  $("needs").innerHTML = waiting.length ? `<div class="needs">
+      <b>${waiting.length} proposal${waiting.length > 1 ? "s" : ""} waiting on a human</b>
+      <span class="muted">${esc(waiting.map(m => m.market).join(", "))} —
+      the strategy has not yet earned the authority to act alone here.</span>
+    </div>` : "";
+
+  $("head").innerHTML =
+    `<th class="left">Market</th>` +
+    d.dimensions.map(x => `<th>${esc(x)}</th>`).join("") +
+    `<th style="text-align:right;padding-right:16px">Verdict</th>`;
+
+  $("rows").innerHTML = d.markets.map(m => {
+    const cells = m.cells.map(c => {
+      const pips = c.checks.map(k => {
+        const hard = k.state === "fail" && !k.repairable ? " hard" : "";
+        return `<i class="pip ${k.state}${hard}" title="${esc(k.label)} — ${esc(k.state)}${
+          k.state === "fail" && !k.repairable ? ", not repairable here" : ""}"></i>`;
+      }).join("");
+      // The summary is spoken; the pips are decorative to a screen reader,
+      // which would otherwise read nine unlabelled list items per row.
+      const summary = c.checks.length
+        ? `${c.dimension}: ${c.checks.filter(k => k.state === "pass").length} of
+           ${c.checks.length} passing`
+        : `${c.dimension}: nothing owed`;
+      return `<td class="cell"><span class="sr">${esc(summary)}</span>
+        <span class="pips" aria-hidden="true">${pips ||
+          '<i class="pip unmeasured"></i>'}</span></td>`;
+    }).join("");
+    return `<tr class="row" data-m="${esc(m.market)}" tabindex="0" role="button"
+      aria-selected="${selected === m.market}"
+      aria-label="${esc(m.market)} ${esc(m.name)}, ${verdictWord(m.ready)},
+                   ${m.present} of ${m.owed} checks measured">
+      <td class="mkt">
+        <div class="code">${esc(m.market)}</div>
+        <div class="place">${esc(m.name)} · ${esc(m.body)}</div>
+      </td>${cells}
+      <td class="verdict">
+        <span class="tag ${verdictClass(m.ready)}">${verdictWord(m.ready)}</span>
+        <div class="cov">${m.present}/${m.owed} measured</div>
+        ${m.pending ? '<div class="flag">PROPOSAL WAITING</div>' : ""}
+      </td></tr>`;
+  }).join("");
+
+  document.querySelectorAll("#rows .row").forEach(el => {
+    el.onclick = () => select(el.dataset.m);
+    el.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(el.dataset.m); }
+    };
+  });
+
+  // Land on something. An operator opening a release board has a question, and
+  // "which market is in the most trouble" is nearly always it -- so the screen
+  // answers it before being asked, rather than showing an empty panel next to a
+  // wall of red. Order of preference: a proposal that is waiting on a person,
+  // then the market with the most failing checks, then simply the first.
+  if (!selected && d.markets.length) {
+    // An explicit link wins over the heuristic: someone who sent this URL
+    // meant this market. No early return here: the panels below still have to
+    // render, and returning left autonomy, guardrails and recent repairs
+    // showing their empty states on any first load that carried a hash.
+    const asked = decodeURIComponent((location.hash || "").slice(1));
+    const linked = d.markets.find(m => m.market === asked);
+    const waiting = d.markets.find(m => m.pending);
+    const nearest = [...d.markets]
+      .filter(m => m.ready === false)
+      .sort((a, b) => (b.present / b.owed) - (a.present / a.owed)
+                   || a.failing - b.failing)[0];
+    select((linked || waiting || nearest || d.markets[0]).market);
+  }
+
+  if (d.autonomy?.length) {
+    $("autonomy").innerHTML = `<div class="pad"><table class="rows">
+      <tr><th>Strategy</th><th>Market</th><th>Record</th><th>Authority</th></tr>
+      ${d.autonomy.map(r => `<tr>
+        <td style="font-family:var(--mono)">${esc(r.strategy)}</td>
+        <td style="font-family:var(--mono)">${esc(r.market)}</td>
+        <td class="muted">${r.succeeded} understood · ${r.lucky} lucky · ${r.failed} failed</td>
+        <td style="font-family:var(--mono);font-size:11px">${esc(r.tier)}</td>
+      </tr>`).join("")}</table>
+      <p class="why">A <em>lucky</em> repair passed while its prediction did not
+      hold. It raises the denominator without raising the numerator, so getting
+      away with it costs a strategy authority rather than earning it.</p></div>`;
+  }
+
+  const g = d.guardrails;
+  if (g && g.total) {
+    $("guardrails").innerHTML = `<div class="pad">
+      ${g.by_reason.map(([reason, n]) => `<div class="guard">
+        <span class="reason">${esc(reason)}</span>
+        <span class="n">${n}</span></div>`).join("")}
+      <p class="why">Every one of these is a proposal the model made and the
+      contracts refused — a repair citing a query it never ran, a prediction
+      against a series that cannot be measured, a strategy that does not exist.
+      A refusal is the system working. The count is durable: it is republished
+      from disk every cycle as <code>continuity_agent_rejections_total</code>,
+      because a counter that ages out five minutes after the agent exits
+      reports "nothing was ever refused".</p></div>`;
+  } else if (g) {
+    $("guardrails").innerHTML = `<div class="pad muted">
+      Nothing refused yet. That is not the same as a guardrail that cannot
+      fire — <code>continuity_agent_rejections_total</code> is published from
+      an append-only log, so this stays empty only while it is true.</div>`;
+  }
+
+  if (d.activity?.length) {
+    $("activity").innerHTML = `<div class="pad">${d.activity.map(a => `
+      <div class="bar">
+        <span><b style="font-family:var(--mono)">${esc(a.strategy)}</b>
+          <span class="muted">${esc(a.market)}</span>
+          <span class="q">${esc(a.baseline)} → ${esc(a.observed)} ·
+            predicted ${esc(a.predicted)}</span></span>
+        <span class="out-tag ${esc(a.outcome)}">${esc(a.outcome).toUpperCase()}</span>
+      </div>`).join("")}</div>`;
+  }
 }
 
-function renderDetail(d) {
-  const rows = d.measurements.map(m => {
-    const has = m.value !== null && m.bar !== null;
-    let ok = null;
-    if (has) {
-      ok = m.label === "Loudness" ? Math.abs(m.value - m.bar) <= 1
-         : m.label === "True peak" ? m.value <= m.bar
-         : m.value <= m.bar;
+/* ---- the timeline ---------------------------------------------------- */
+function renderTimeline(h) {
+  const order = board ? board.markets.map(m => m.market) : Object.keys(h.markets);
+  const now = Date.now() / 1000, from = now - h.hours * 3600, span = now - from;
+  $("t-from").textContent = "−" + h.hours + "h";
+
+  $("timeline").innerHTML = order.map(market => {
+    const pts = h.markets[market] || [];
+    // Merge consecutive equal points into one span. One div per sample would
+    // be 174 nodes per market and would draw seams through a solid band.
+    const segs = [];
+    for (const p of pts) {
+      const last = segs[segs.length - 1];
+      if (last && last.v === p.v && p.t - last.end <= h.step * 1.5) last.end = p.t;
+      else segs.push({v: p.v, start: p.t, end: p.t});
     }
-    return `<tr>
-      <td>${esc(m.label)}<span class="q">${esc(m.query)}</span></td>
-      <td class="num ${ok === null ? "" : ok ? "pass" : "fail"}">
-        ${m.value === null ? "<span class='muted'>not measured</span>"
-                           : esc(m.value) + " " + esc(m.unit)}</td>
-      <td class="num muted">${m.bar === null ? "–" : esc(m.bar)}</td>
-    </tr>`;
+    const bars = segs.map(s => {
+      const left = Math.max(0, (s.start - from) / span) * 100;
+      const width = Math.max(0.4, ((s.end - s.start + h.step) / span) * 100);
+      return `<span class="seg ${s.v}" style="left:${left.toFixed(2)}%;
+        width:${Math.min(width, 100 - left).toFixed(2)}%"></span>`;
+    }).join("");
+    const covered = pts.length * h.step;
+    const label = !pts.length
+      ? "no verdict at any point in the window"
+      : `${segs[segs.length - 1].v} now, ` +
+        `${Math.round(100 * covered / span)}% of the window has a verdict`;
+    return `<div class="lbl">${esc(market)}</div>
+      <div class="track" role="img" aria-label="${esc(market)}: ${esc(label)}">${bars}</div>`;
   }).join("");
+}
+
+/* ---- detail ---------------------------------------------------------- */
+function renderDetail(d) {
+  const rows = d.measurements.map(m => `<tr>
+      <td>${esc(m.label)}<span class="q">${esc(m.query)}</span></td>
+      <td class="n ${m.state === "unmeasured" ? "" : m.state}">
+        ${m.value === null ? '<span class="muted">not measured</span>'
+                           : esc(m.value) + " " + esc(m.unit)}</td>
+      <td class="n muted">${m.bar === null ? "–" : esc(m.bar)}</td>
+    </tr>`).join("");
+
+  const diag = d.diagnostics.length ? `<div class="pad">
+    <h2 style="margin-bottom:8px">Diagnostics <em>why, not whether</em></h2>
+    <table class="rows">${d.diagnostics.map(x => `<tr>
+      <td>${esc(x.label)}<span class="q">${esc(x.query)}</span></td>
+      <td class="n">${esc(x.value)}</td></tr>`).join("")}</table></div>` : "";
+
+  const assets = d.assets.length ? `<div class="pad">
+    <h2 style="margin-bottom:8px">Lineage <em>what exists, and from what</em></h2>
+    ${d.assets.map(a => `<div class="asset">
+      <span>${esc(a.id.split(":").slice(1).join(":"))} <span class="muted">v${a.version}</span>
+        ${a.stale ? '<span class="stale">· stale</span>' : ""}</span>
+      <span class="muted">${esc(a.sha256)}${a.parents.length
+        ? " ← " + esc(a.parents.join(", ")) : ""}</span>
+    </div>`).join("")}</div>` : "";
+
+  const blast = (d.blast_radius && d.blast_radius.length) ? `<div class="pad">
+    <h2 style="margin-bottom:8px">Blast radius <em>what a change here would invalidate</em></h2>
+    ${d.blast_radius.map(b => `<div class="blast">
+      <span class="from">${esc(b.id)}</span>
+      <span class="count-pill">${b.affects.length} downstream</span>
+      ${b.affects.map(a => `<span class="to ${a.stale ? "stale" : ""}">
+        <span class="arr">└─</span> ${esc(a.id)}${a.stale ? " · already stale" : ""}
+      </span>`).join("")}
+    </div>`).join("")}
+    <p class="why">Read downstream, where the lineage panel reads upstream.
+    This is the question to ask before approving: repairing the stem gives it a
+    new hash, and everything built from the old one is stale until it is
+    rebuilt. Computed from the asset index rather than from traces — traces are
+    sampled and expire, and an empty blast radius for an asset that has
+    children is the most dangerous wrong answer this panel could give.</p>
+  </div>` : "";
 
   let proposal = "";
   if (d.proposal) {
-    const p = d.proposal;
+    const p = d.proposal, can = !(board && board.can_repair === false);
     proposal = `<div class="pad prop">
-      <h2 style="margin-bottom:12px">Proposal awaiting a human</h2>
-      <dl>
+      <h2 style="margin-bottom:11px">Proposal awaiting a human</h2>
+      <dl class="kv">
         <dt>Strategy</dt><dd class="mono">${esc(p.strategy)} ${esc(JSON.stringify(p.params))}</dd>
         <dt>Predicts</dt><dd class="mono">${esc(p.prediction)}</dd>
         <dt>Authority</dt><dd class="mono">${esc(p.tier)}</dd>
         <dt>Because</dt><dd>${esc(p.rationale)}</dd>
         <dt>Evidence</dt><dd>${p.evidence.map(e => `<span class="q">${esc(e)}</span>`).join("")}</dd>
       </dl>
-      <button class="go" id="approve" data-m="${esc(d.market)}">Approve and run</button>
-      <p class="why">This strategy has no measured history in this market, so it
-      proposes and a person decides. After three verified successes the same
-      repair runs without this step.</p>
-      <pre class="log" id="runlog" hidden></pre>
-    </div>`;
+      <button class="go" id="approve" data-m="${esc(d.market)}" ${can ? "" : "disabled"}>
+        Approve and run</button>
+      <p class="why">${can
+        ? "This strategy has no measured history in this market, so it proposes and a person decides. After three verified successes the same repair runs without this step."
+        : "This control room carries the asset index and the repair history but not the media, so it reads and investigates and cannot repair."}</p>
+      <pre class="log" id="runlog" hidden></pre></div>`;
   }
 
-  $("detail").innerHTML = `${proposal}<div class="pad"><table>
+  // The verdict, shown as the product it actually is. The matrix says READY or
+  // BLOCKED; this says which of the three factors decided it, and names the
+  // recording rule that multiplied them.
+  const v = d.verdict;
+  const factors = v.factors.map(f => `<tr>
+      <td><span class="mk ${f.state}"></span>${esc(f.label)}
+        <span class="q">${esc(f.query)}</span></td>
+      <td class="n ${f.state === "unknown" ? "muted" : f.state}">
+        ${f.value === null ? "absent"
+          : (f.state === "pass" ? "yes" : "no") +
+            ' <span class="muted">' + esc(f.value) + "</span>"}</td>
+    </tr>`).join("");
+  const verdict = `<div class="pad">
+    <h2 style="margin-bottom:8px">Verdict <em>computed by Grafana, not here</em></h2>
+    <table class="rows">${factors}</table>
+    <p class="why"><code>${esc(v.rule)}</code> is a Mimir recording rule and the
+    product of those three. It cannot reach 1 while any factor is 0, and no
+    agent holds a credential that can write it — the MCP server they read it
+    through registers no write tools at all.${d.grafana
+      ? ` <a class="out" href="${esc(d.grafana)}" target="_blank"
+           rel="noopener noreferrer">Open in Grafana ↗</a>` : ""}</p></div>`;
+
+  $("detail").innerHTML = proposal + verdict + `<div class="pad">
+    <button class="go alt" id="investigate" data-m="${esc(d.market)}">Investigate now</button>
+    <p class="why">Runs the Conductor on the Agent Development Kit. Every tool
+    call it makes appears on the left as it happens.</p></div>
+    <div class="pad"><table class="rows">
     <tr><th>Measurement</th><th style="text-align:right">Measured</th>
-        <th style="text-align:right">Bar</th></tr>${rows}</table></div>`;
+        <th style="text-align:right">Bar</th></tr>${rows}</table></div>`
+    + diag + assets + blast;
 
-  const btn = $("approve");
-  if (btn) btn.onclick = () => approve(btn.dataset.m, btn);
-}
-
-async function approve(market, btn) {
-  busy = true;
-  btn.disabled = true;
-  btn.textContent = "Running…";
-  const log = $("runlog");
-  log.hidden = false;
-  log.textContent = "acting, measuring, verifying…";
-  try {
-    const r = await fetch(`/api/approve/${market}`, {method: "POST"});
-    const d = await r.json();
-    log.textContent = (d.output || "") + (d.error ? "\n" + d.error : "");
-  } catch (e) {
-    log.textContent = String(e);
-  } finally {
-    busy = false;
-    btn.textContent = "Approve and run";
-    refresh();
-    select(market);
-  }
+  const a = $("approve"); if (a) a.onclick = () => approve(a.dataset.m, a);
+  const i = $("investigate"); if (i) i.onclick = () => investigate(i.dataset.m, i);
 }
 
 async function select(market) {
   selected = market;
-  $("detail-title").textContent = market;
-  document.querySelectorAll(".mkt").forEach(el =>
-    el.setAttribute("aria-selected", el.dataset.m === market));
+  // The URL names what is on screen, so a link to a market is a link to that
+  // market. replaceState rather than push: arrow-keying down the board should
+  // not bury the back button under five history entries.
+  try { history.replaceState(null, "", "#" + encodeURIComponent(market)); } catch {}
+  $("detail-h").textContent = market + " — detail";
+  document.querySelectorAll("#rows .row").forEach(el =>
+    el.setAttribute("aria-selected", String(el.dataset.m === market)));
+  $("detail").innerHTML = `<div class="pad">
+    <div class="sk" style="width:60%"></div>
+    <div class="sk" style="width:85%;margin-top:9px"></div>
+    <div class="sk" style="width:45%;margin-top:9px"></div></div>`;
   try {
-    const d = await (await fetch(`/api/market/${market}`)).json();
+    const d = await (await fetch(`/api/market/${encodeURIComponent(market)}`)).json();
     if (d.error) throw new Error(d.error);
     renderDetail(d);
+    clearFail();
   } catch (e) {
-    $("detail").innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    $("detail").innerHTML = `<div class="pad muted">Could not read this market.</div>`;
+    fail("Reading " + market + " failed: " + e.message);
   }
 }
 
+/* ---- keyboard -------------------------------------------------------- */
+document.addEventListener("keydown", (e) => {
+  if (pop || e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea") return;
+  if (!board || !board.markets.length) return;
+  const list = board.markets.map(m => m.market);
+  const at = list.indexOf(selected);
+  if (e.key === "ArrowDown" || e.key === "j") {
+    e.preventDefault(); select(list[Math.min(list.length - 1, at + 1)] || list[0]);
+  } else if (e.key === "ArrowUp" || e.key === "k") {
+    e.preventDefault(); select(list[Math.max(0, at - 1)] || list[0]);
+  } else if (e.key === "Enter" && selected && !busy) {
+    const i = $("investigate"); if (i) { e.preventDefault(); i.click(); }
+  }
+});
+
+/* ---- actions --------------------------------------------------------- */
+function pushEvent(ev) {
+  const box = $("trace");
+  if (box.dataset.fresh !== "1") { box.innerHTML = ""; box.dataset.fresh = "1"; }
+  let body = "";
+  if (ev.type === "tool")
+    body = `<code>${esc(ev.name)} → ${esc(JSON.stringify(ev.result).slice(0, 240))}</code>`;
+  else if (ev.type === "finding")
+    body = esc(ev.claim) + (ev.evidence || []).map(e => `<span class="q">${esc(e)}</span>`).join("");
+  else if (ev.type === "conclusion" && ev.action === "repair")
+    body = `<b>${esc(ev.strategy)}</b> ${esc(JSON.stringify(ev.params))}
+            <span class="q">${esc(ev.prediction)} · authority ${esc(ev.tier)}</span>
+            <span class="q">${esc(ev.rationale || "")}</span>`;
+  else if (ev.type === "conclusion")
+    body = `${esc(ev.action)} — ${esc(ev.reason || ev.detail || "")}`;
+  else body = esc(ev.detail || ev.name || JSON.stringify(ev));
+  box.insertAdjacentHTML("beforeend",
+    `<div class="ev"><span class="k ${esc(ev.type)}">${esc(ev.type)}</span><span>${body}</span></div>`);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function investigate(market, btn) {
+  if (!token()) { $("signin").click(); return; }
+  busy = true; btn.disabled = true; btn.textContent = "Investigating…";
+  $("trace").dataset.fresh = "0";
+  try {
+    const r = await fetch(`/api/investigate/${encodeURIComponent(market)}`,
+                          {method: "POST", headers: authHeaders()});
+    if (r.status === 401) {
+      pushEvent({type: "error", detail: "operator token rejected"});
+      markSignedIn(); return;
+    }
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const parts = buf.split("\n\n"); buf = parts.pop();
+      for (const p of parts) {
+        const line = p.split("\n").find(x => x.startsWith("data: "));
+        if (!line) continue;
+        const ev = JSON.parse(line.slice(6));
+        if (ev.type === "end") continue;
+        pushEvent(ev);
+      }
+    }
+  } catch (e) {
+    pushEvent({type: "error", detail: String(e)});
+  } finally {
+    busy = false; btn.disabled = false; btn.textContent = "Investigate now";
+    refresh(); if (selected) select(selected);
+  }
+}
+
+async function approve(market, btn) {
+  if (!token()) { $("signin").click(); return; }
+  busy = true; btn.disabled = true; btn.textContent = "Running…";
+  const log = $("runlog"); log.hidden = false;
+  log.textContent = "acting, measuring, verifying…";
+  try {
+    const r = await fetch(`/api/approve/${encodeURIComponent(market)}`,
+                          {method: "POST", headers: authHeaders()});
+    const d = await r.json();
+    log.textContent = (d.output || d.error || JSON.stringify(d));
+  } catch (e) { log.textContent = String(e); }
+  finally {
+    busy = false; btn.disabled = false; btn.textContent = "Approve and run";
+    refresh(); select(market);
+  }
+}
+
+/* ---- loop ------------------------------------------------------------ */
 async function refresh() {
   if (busy) return;
   try {
-    const d = await (await fetch("/api/state")).json();
+    const d = await (await fetch("/api/board")).json();
     if (d.error) throw new Error(d.error);
-    $("n-ready").textContent = d.ready;
-    $("n-blocked").textContent = d.blocked;
-    $("stamp").textContent = "live · " + d.at.replace("T", " ").replace("+00:00", "Z");
-    renderMarkets(d.markets);
-    renderAutonomy(d.autonomy);
-    renderActivity(d.activity);
-    if (selected) document.querySelectorAll(".mkt").forEach(el =>
-      el.setAttribute("aria-selected", el.dataset.m === selected));
+    renderBoard(d);
+    clearFail();
   } catch (e) {
-    $("stamp").textContent = "disconnected — " + e.message;
+    fail("The board could not be read: " + e.message +
+         " — the figures below are the last good ones.");
+    return;
   }
+  try {
+    renderTimeline(await (await fetch("/api/history")).json());
+  } catch (e) { /* the timeline is context, not the answer; never blocks the board */ }
 }
 
+$("rows").innerHTML = `<tr><td class="pad" colspan="10">
+  <div class="sk" style="width:30%"></div>
+  <div class="sk" style="width:70%;margin-top:10px"></div>
+  <div class="sk" style="width:55%;margin-top:10px"></div></td></tr>`;
+markSignedIn();
 refresh();
 setInterval(refresh, 15000);
 </script>

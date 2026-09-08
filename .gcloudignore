@@ -1,32 +1,35 @@
-# Keep the build context small and the image honest.
+# What `gcloud builds submit` uploads. NOT the same question as what git tracks.
+#
+# This file has to exist. Without it gcloud falls back to .gitignore, and
+# .gitignore excludes out/ -- which is correct for git and wrong for a build,
+# because the small half of out/store is exactly what the control room needs to
+# show real lineage and a real repair history. The first build with a working
+# dependency set still failed on `COPY out/store/index/`: the directory was on
+# disk, tracked by nothing, and never uploaded. The Dockerfile's own
+# .dockerignore never got a say, because the file had already been filtered out
+# one layer earlier.
+#
+# So: this decides what LEAVES this machine, .dockerignore decides what lands in
+# the image, and out/store is deliberately present in the first and filtered by
+# the second down to the parts that are kilobytes rather than gigabytes.
+
 .git
+.gitignore
 .venv
-__pycache__
+__pycache__/
 *.pyc
 .pytest_cache
 
-# 224 MB of Sintel master, and the 240 MB of content-addressed media derived
-# from it. A container is the wrong place for a film. The Dockerfile copies
-# only the small half of the store -- index, QC reports, ledger, metadata --
-# which is what the control room needs to show real lineage.
-assets/sintel
-bin
-
-# Never ship credentials in a layer.
-.env.local
+# Never leaves the machine.
 .env
-
-# Never ship credentials in a layer.
+.env.local
 .gcp-continuity.json
 .cloudrun-env.yaml
 
-# Not needed at runtime. scripts/ IS needed: the control room's approve button
-# runs scripts/repair.py rather than reimplementing a repair.
-tests
-docs
-deploy
-grafana/rules/tests
-
+# 224 MB of Sintel master and the 240 MB of media derived from it. A container
+# is the wrong place for a film.
+assets/sintel/*.mp4
+bin/
 # out/ is a scratch directory that also happens to hold the asset store, so it
 # is excluded wholesale and the four things the image genuinely needs are named
 # back in. An allowlist because the denylist form already failed once: a new
@@ -57,3 +60,11 @@ out/store/tts/
 out/scenes/*
 !out/scenes/S03.mp4
 !out/scenes/manifest.json
+
+# Not needed to build or run. scripts/ IS needed: the control room's approve
+# button runs scripts/repair.py rather than reimplementing a repair.
+tests/
+docs/
+deploy/
+grafana/rules/tests/
+screenshot/

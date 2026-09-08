@@ -3,18 +3,24 @@
 
 # Telemetry. The OTLP HTTP exporter specifically -- Grafana Cloud's OTLP
 # gateway is HTTP/protobuf, not gRPC.
-opentelemetry-api==1.44.0
-opentelemetry-sdk==1.44.0
-opentelemetry-exporter-otlp-proto-http==1.44.0
+#
+# 1.42.1 and not the current 1.44.0, because google-adk caps opentelemetry-api
+# at <=1.42.1 and the exporter requires an exactly-matching api. Installing
+# them in two passes appears to work -- pip leaves 1.44.0 in place and ADK
+# imports fine -- but that state is not RESOLVABLE, so it survives on a
+# developer machine and fails the moment a container builds from this file in
+# one pass. A dependency set that only installs by accident is not pinned.
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp-proto-http==1.42.1
 
 # Dubbing and reasoning.
 google-genai>=2.22.0
 
 # The Agent Development Kit runs the Conductor's tool loop and is the path to
-# Agent Engine. Pinned loose because it moves fast; note that installing it
-# downgrades opentelemetry-sdk, which the OTLP exporter above needs at 1.44 --
-# install requirements in order and the pin above wins.
-google-adk>=2.8.0
+# Agent Engine. Pinned exactly: its OpenTelemetry ceiling is what sets the
+# pins above, so a floating version would silently move them.
+google-adk==2.8.0
 
 # Provisioning rules, contact points and routes into Grafana.
 requests>=2.31

@@ -67,6 +67,7 @@ from telemetry.metrics import (  # noqa: E402
     REPAIRS,
     SUBTITLE_RATE,
     SYNC_OFFSET,
+    SYNC_SIGNED,
     TRUE_PEAK,
 )
 
@@ -464,9 +465,36 @@ def media_qc() -> dict:
             },
             options={"legend": _LEGEND, "tooltip": _TOOLTIP},
         ),
+        _panel(
+            "timeseries", "Which way is it out? (signed drift)",
+            [_target(f'{SYNC_SIGNED}{{market=~"$market"}}', "{{market}}")],
+            w=24, h=7, x=0, y=7,
+            description=(
+                "Positive means the dub arrives LATE, negative means EARLY. "
+                "The measurement above is a magnitude, because it is judged "
+                "against a tolerance and a signed value would let a badly "
+                "early dub pass a `<= 120 ms` check -- so on its own it says "
+                "how far wrong the stem is and never which way. RETIME shifts "
+                "the stem, and without this it was choosing a direction by "
+                "coin flip: a dub 187 ms early was shifted a further 188 ms "
+                "earlier and landed at 375. The repair shift is the negation "
+                "of this line."
+            ),
+            defaults={
+                "unit": "ms",
+                "custom": {"lineWidth": 2, "fillOpacity": 12,
+                           "showPoints": "never",
+                           "thresholdsStyle": {"mode": "line"}},
+                "thresholds": {"mode": "absolute", "steps": [
+                    {"color": "text", "value": None},
+                ]},
+                "color": {"mode": "palette-classic"},
+            },
+            options={"legend": _LEGEND, "tooltip": _TOOLTIP},
+        ),
         _measured_vs_bar(
             "Line overrun vs tolerance", LINE_OVERRUN, "line_overrun_max_ms",
-            "ms", x=0, y=7,
+            "ms", x=0, y=14,
             description=(
                 "How far the worst line runs past its slot. A distinct failure "
                 "from onset drift: when the gaps between cues absorb an "
@@ -476,7 +504,7 @@ def media_qc() -> dict:
         ),
         _measured_vs_bar(
             "Audio description collision", AD_COLLISION, "ad_collision_max_ms",
-            "ms", x=12, y=7,
+            "ms", x=12, y=14,
             description=(
                 "Narration overlapping dialogue. The tolerance is zero, "
                 "because there is no amount of talking over the dialogue that "
@@ -485,7 +513,7 @@ def media_qc() -> dict:
         ),
         _measured_vs_bar(
             "Integrated loudness vs target", LOUDNESS, "loudness_target_lufs",
-            "none", x=0, y=14,
+            "none", x=0, y=28,
             description=(
                 "A two-sided band, not a ceiling: too quiet fails delivery "
                 "exactly as surely as too loud."
@@ -493,7 +521,7 @@ def media_qc() -> dict:
         ),
         _measured_vs_bar(
             "True peak vs ceiling", TRUE_PEAK, "true_peak_max_dbtp",
-            "none", x=12, y=14,
+            "none", x=12, y=21,
         ),
         _measured_vs_bar(
             "Subtitle reading rate vs limit", SUBTITLE_RATE, "subtitle_max_cps",
@@ -510,7 +538,7 @@ def media_qc() -> dict:
             "table", "Per-requirement result, every dimension",
             [_target('market_requirement_met{market=~"$market"}',
                      "{{market}} / {{requirement}}", instant=True)],
-            w=12, h=7, x=12, y=21,
+            w=12, h=7, x=12, y=28,
             defaults={
                 "mappings": [{"type": "value", "options": {
                     "0": {"text": "FAIL", "color": CRITICAL, "index": 0},

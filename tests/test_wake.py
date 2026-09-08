@@ -204,9 +204,18 @@ def test_a_duplicate_delivery_still_answers_200(endpoint):
     assert body == {"received": 1, "dispatched": 0}
 
 
-def test_healthz(endpoint):
+@pytest.mark.parametrize("path", ["/api/health", "/healthz"])
+def test_health(endpoint, path):
+    """Both paths answer, and /api/health is the one to probe in production.
+
+    Cloud Run's frontend reserves /healthz and answers it itself with a Google
+    error page -- it never reaches the container. A probe there reported the
+    service down while it was serving every other route correctly, which is a
+    worse failure than having no probe, because it points the investigation at
+    the healthy thing.
+    """
     url, _ = endpoint
-    with urllib.request.urlopen(url + "/healthz", timeout=5) as resp:
+    with urllib.request.urlopen(url + path, timeout=5) as resp:
         assert json.loads(resp.read()) == {"ok": True}
 
 

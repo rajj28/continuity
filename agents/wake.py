@@ -199,7 +199,10 @@ class _Handler(BaseHTTPRequestHandler):
         return self.headers.get("Authorization") == f"Bearer {self.token}"
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib naming
-        if self.path == "/healthz":
+        # Both, because Cloud Run's frontend reserves /healthz and never
+        # forwards it -- a probe there reports the service down while it is
+        # answering every other path.
+        if self.path in ("/api/health", "/healthz"):
             self._reply(200, {"ok": True})
         else:
             self._reply(404, {"error": "not found"})

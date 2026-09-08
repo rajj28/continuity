@@ -1,0 +1,3 @@
+
+# entrypoint must keep LF endings or the shebang breaks in the container
+docker-entrypoint.sh text eol=lf
