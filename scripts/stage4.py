@@ -155,6 +155,30 @@ def main() -> int:
                     )
                     partial = True
                     break
+
+                # It still does not fit. Drop it.
+                #
+                # This is the same rule that already skips gaps under 700 ms,
+                # arrived at from the other end: a description that cannot be
+                # said in the time available is not a description. Keeping it
+                # lays narration over the dialogue it was written to avoid,
+                # which is worse for the viewer than silence and blocks the
+                # market on `ad_collision_ms` regardless -- so the track ships
+                # neither describing the moment NOR passing the check.
+                #
+                # The omission is not hidden: ad_coverage_ratio falls, which is
+                # a visible, measured statement that this scene is less
+                # described than it should be, and the right place for a human
+                # to decide whether to re-cut the gap or accept it.
+                if spoken > gap.duration_ms:
+                    log.warning(
+                        "  gap %d  dropped after %d attempt(s): %.0f ms of "
+                        "narration will not fit a %.0f ms gap (over by %.0f)",
+                        gap.index, args.attempts, spoken, gap.duration_ms,
+                        spoken - gap.duration_ms,
+                    )
+                    continue
+
                 segment = DubSegment(
                     index=gap.index, pcm=pcm,
                     source_text=description.text, target_text=narration,

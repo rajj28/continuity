@@ -29,12 +29,26 @@ SATISFIED_BY: dict[str, tuple[str, ...]] = {
     "AUDIO_DESCRIPTION": ("AUDIO_DESCRIPTION",),
     "DUB": ("DUB_STEM",),
     "FORCED_NARRATIVE": ("FORCED_NARRATIVE",),
+    "PACKAGE": ("PACKAGE",),
 }
 
 # Deliverables every market needs whether or not it says so. A localised
 # release without a dub or a subtitle is not a release, and leaving these
 # implicit in each profile would mean a typo could silently excuse one.
-UNIVERSAL = ("DUB", "SDH_CAPTIONS")
+#
+# PACKAGE is the one that makes the others mean something. Every other
+# deliverable here is an ingredient -- a stem, a subtitle file, a narration
+# track -- and a market whose ingredients are all present and perfect has still
+# shipped nothing. The package is the assembled file a platform receives, and
+# requiring it is what turns "we made the parts" into "we made the release".
+#
+# It is also the asset where staleness bites hardest, and deliberately so: it
+# records every ingredient's hash, so any repair anywhere in the market
+# invalidates it until stage 6 runs again. That is the correct behaviour and
+# an uncomfortable one -- the market goes back to blocked the moment its dub is
+# improved, which is exactly what should happen to a package built from audio
+# that no longer exists.
+UNIVERSAL = ("DUB", "SDH_CAPTIONS", "PACKAGE")
 
 
 class UnknownRequirement(KeyError):
