@@ -170,10 +170,9 @@ def main() -> int:
                 if intent is None:
                     return 0
             else:
-                from google import genai as sdk
+                from media.model import client as build_client
                 conclusion = conduct(
-                    sdk.Client(api_key=env["GEMINI_API_KEY"]), signal, inv,
-                    genai, scene=args.scene,
+                    build_client(), signal, inv, genai, scene=args.scene,
                 )
                 if conclusion.acted:
                     intent = conclusion.intent

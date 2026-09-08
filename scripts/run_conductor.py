@@ -63,9 +63,10 @@ def main() -> int:
                 print("\nnothing to do")
                 return 0
 
-            from google import genai as sdk
-            client = sdk.Client(api_key=env["GEMINI_API_KEY"])
-            conclusion = conduct(client, signal, inv, genai, scene=args.scene)
+            from media.model import client as build_client, describe
+            log.info("model backend: %s", describe())
+            conclusion = conduct(build_client(), signal, inv, genai,
+                                 scene=args.scene)
 
         print(f"\n--- {conclusion.action.upper()} after {conclusion.turns} turn(s) ---")
         if conclusion.rejections:

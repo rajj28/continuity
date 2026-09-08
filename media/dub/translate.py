@@ -38,7 +38,13 @@ from media.dub.cache import Cache
 from media.dub.quota import call as quota_call
 from media.qc.types import ProbeError
 
-MODEL = "gemini-2.5-flash"
+# Resolved per backend: Vertex and the consumer API do not serve the same
+# catalogue, and a hard-coded name works on one and 404s on the other.
+from media.model import model_for  # noqa: E402
+
+
+def _model() -> str:
+    return model_for("text")
 
 # Market -> the language the line is spoken in, and how it is named to the
 # model. Kept separate from the market id because a delivery territory and a
@@ -135,7 +141,7 @@ def _parse(raw: str) -> AdaptedLine:
         text=str(obj["text"]).strip(),
         syllables_claimed=int(syllables) if isinstance(syllables, int) else None,
         note=str(obj.get("note", ""))[:200],
-        detail={"model": MODEL},
+        detail={"model": _model()},
     )
 
 
@@ -163,7 +169,8 @@ def translate(
     # The retry budget is part of the key: "translate this" and "translate this
     # more briefly than 3331 ms" are different requests with different right
     # answers, and collapsing them would serve the too-long line forever.
-    ckey = (MODEL, market, source, f"{slot_ms:.0f}", f"{shorter_than or 0:.0f}")
+    model = _model()
+    ckey = (model, market, source, f"{slot_ms:.0f}", f"{shorter_than or 0:.0f}")
     if cache is not None and (hit := cache.get_json(*ckey)) is not None:
         return AdaptedLine(**hit)
 
@@ -177,9 +184,9 @@ def translate(
     prompt = _prompt(source, language, slot_ms, shorter_than)
     try:
         response = quota_call(
-            MODEL,
+            model,
             lambda: client.models.generate_content(
-                model=MODEL, contents=prompt, config=config
+                model=model, contents=prompt, config=config
             ),
             label=f"translate({market})",
         )

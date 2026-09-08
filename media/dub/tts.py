@@ -31,13 +31,14 @@ from media.qc.types import ProbeError
 
 log = logging.getLogger("continuity.tts")
 
-# gemini-3.1-flash-tts-preview rather than 2.5, because the free tier's
-# per-day quota is per model family and 2.5-flash-tts and 2.5-pro-tts share a
-# bucket while 3.1 has its own. Measured on 7 September 2026: with the 2.5
-# bucket exhausted, 3.1 answered normally. That is a different model with its
-# own published limit, not a way around a limit.
-MODEL = "gemini-3.1-flash-tts-preview"
-FALLBACK_MODEL = "gemini-2.5-flash-preview-tts"
+# Resolved per backend. On Vertex this is gemini-2.5-flash-tts; on the
+# consumer API it is gemini-3.1-flash-tts-preview, whose per-day quota was the
+# constraint the whole pipeline was designed around before billing opened.
+from media.model import model_for
+
+
+def _model() -> str:
+    return model_for("speech")
 
 # One prebuilt voice per market, fixed so a re-run of the demo sounds the same
 # and so a repair does not change the performer mid-scene -- which would be a
@@ -86,10 +87,11 @@ class SynthesisError(ProbeError):
 
 
 def synthesise(
-    client: Any, text: str, *, voice: str, model: str = MODEL,
+    client: Any, text: str, *, voice: str, model: str = "",
     cache: Cache | None = None,
 ) -> bytes:
     """Text to raw 24 kHz mono s16le PCM."""
+    model = model or _model()
     if cache is not None and (hit := cache.get_bytes(model, voice, text)) is not None:
         return hit
     pcm = _synthesise_once(client, text, voice=voice, model=model)
@@ -99,8 +101,9 @@ def synthesise(
 
 
 def _synthesise_once(
-    client: Any, text: str, *, voice: str, model: str = MODEL
+    client: Any, text: str, *, voice: str, model: str = ""
 ) -> bytes:
+    model = model or _model()
     from google.genai import types
 
     config = types.GenerateContentConfig(
@@ -213,7 +216,7 @@ def dub_line(
         reference_start_ms=reference_start_ms,
         attempts=len(attempts),
         detail={
-            "model": MODEL,
+            "model": _model(),
             "translation_model": line.detail.get("model", ""),
             "voice": chosen,
             "market": market,

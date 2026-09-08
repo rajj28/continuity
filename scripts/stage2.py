@@ -1,10 +1,10 @@
 """Stage 2: build a dubbed stem for a market, measure it, and publish it.
 
 Stage 1 turned the master into scenes and a dialogue list. This turns a scene
-into a real dub -- Gemini Live Translate on the real Sintel dialogue audio --
-stores every artefact by content hash with its lineage, measures the result
-with the deterministic probes, and emits the trace and metrics that let Grafana
-form a verdict.
+into a real dub -- Gemini adapts each line of the real Sintel dialogue against
+the slot it has to fit, Gemini TTS speaks it -- then stores every artefact by
+content hash with its lineage, measures the result with the deterministic
+probes, and emits the trace and metrics that let Grafana form a verdict.
 
 Nothing here decides whether the dub is acceptable. It measures and publishes.
 The judgement happens in the Mimir recording rules, where no agent can reach
@@ -130,24 +130,19 @@ def main() -> int:
             # ---- synthesise ------------------------------------------------
             log.info("translating %d lines into %s (%d attempt(s) each)",
                      len(scene["utterances"]), market, args.attempts)
-            # The client is built here rather than inside media/dub: that
-            # package has no business reaching into .env.local, and in Cloud
-            # Run the key arrives as a real environment variable anyway.
-            from google import genai
-            key = load_env().get("GEMINI_API_KEY", "")
-            if not key:
-                raise SystemExit(
-                    "no GEMINI_API_KEY in .env.local. Create one at "
-                    "https://aistudio.google.com/apikey -- the Gemini API free "
-                    "tier needs no Cloud Billing."
-                )
-            # The free tier allows ten TTS calls per project per day and a
-            # scene needs twelve, so the caches are what make a run resumable
-            # rather than a gamble on finishing before the quota does.
+            # One factory decides Vertex or the consumer API, and resolves the
+            # model name for whichever it is -- the two backends do not serve
+            # the same catalogue.
+            from media.model import client as build_client, describe
+            log.info("model backend: %s", describe())
+            # The caches predate billing: the free tier allowed ten TTS calls
+            # per project per day against a twelve-line scene, so they were
+            # what made a run resumable rather than a gamble. They still earn
+            # their place -- a re-run of the demo costs nothing.
             audio = audio_cache(Path(args.store))
             lines = text_cache(Path(args.store))
             segments = dub_scene(
-                genai.Client(api_key=key), scene["utterances"],
+                build_client(), scene["utterances"],
                 market=market, origin_ms=scene["in_ms"],
                 max_attempts=args.attempts, cache=audio, lines=lines,
             )

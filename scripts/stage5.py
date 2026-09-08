@@ -46,7 +46,9 @@ from telemetry.otel import asset_span, load_env, setup, shutdown  # noqa: E402
 
 log = logging.getLogger("continuity.stage5")
 
-MODEL = "gemini-3-flash-preview"
+from media.model import model_for  # noqa: E402
+
+MODEL = model_for("text")
 TITLE = "SINTEL"
 
 SOURCE = {
@@ -193,8 +195,9 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s")
     env = load_env()
-    from google import genai as sdk
-    client = sdk.Client(api_key=env["GEMINI_API_KEY"])
+    from media.model import client as build_client, describe
+    log.info("model backend: %s", describe())
+    client = build_client()
 
     root = Path(args.store)
     store = Store(root)

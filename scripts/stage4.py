@@ -79,13 +79,9 @@ def main() -> int:
     if not video.exists():
         raise SystemExit(f"{video} is missing; run scripts/stage1.py first")
 
-    from google import genai
-
-    from telemetry.otel import load_env
-    key = load_env().get("GEMINI_API_KEY", "")
-    if not key:
-        raise SystemExit("no GEMINI_API_KEY in .env.local")
-    client = genai.Client(api_key=key)
+    from media.model import client as build_client, describe
+    log.info("model backend: %s", describe())
+    client = build_client()
 
     store = Store(Path(args.store))
     qc = QCStore(Path(args.store))

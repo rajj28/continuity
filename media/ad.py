@@ -43,12 +43,17 @@ from typing import Any
 
 from media.dub.cache import Cache
 from media.dub.quota import call as quota_call
+from media.model import model_for
 from media.qc.types import Interval, Measurement, ProbeError
 
 log = logging.getLogger("continuity.ad")
 
-MODEL = "gemini-3.5-flash"
 METHOD = "gemini_video_description_v1"
+
+
+def _model() -> str:
+    """Resolved per backend -- see media/model.py on why a name is not enough."""
+    return model_for("vision")
 
 # Measured, not assumed. The textbook figure for AD narration is about 160
 # words per minute, and budgeting at that rate produced "Sintel runzelt." --
@@ -183,7 +188,7 @@ def _parse(raw: str, gaps: list[Gap]) -> list[Description]:
             continue  # the model judged the gap not worth describing
         out.append(Description(
             gap=by_index[index], text=text,
-            detail={"model": MODEL, "words_claimed": item.get("words")},
+            detail={"model": _model(), "words_claimed": item.get("words")},
         ))
     return out
 
@@ -203,7 +208,7 @@ def describe_scene(
         return []
 
     prompt = _prompt(gaps, utterances, origin_ms)
-    ckey = (MODEL, video.name, str(video.stat().st_size), prompt)
+    ckey = (_model(), video.name, str(video.stat().st_size), prompt)
     if cache is not None and (hit := cache.get_json(*ckey)) is not None:
         by_index = {g.index: g for g in gaps}
         return [
@@ -216,9 +221,9 @@ def describe_scene(
 
     try:
         response = quota_call(
-            MODEL,
+            _model(),
             lambda: client.models.generate_content(
-                model=MODEL,
+                model=_model(),
                 contents=[
                     types.Part.from_bytes(
                         data=video.read_bytes(), mime_type="video/mp4"
@@ -292,7 +297,7 @@ def localise_description(
         raise DescriptionError(f"no language for market {market!r}")
     _, language = LANGUAGE[market]
 
-    ckey = (MODEL, "ad_localise", market, text, str(gap.word_budget),
+    ckey = (_model(), "ad_localise", market, text, str(gap.word_budget),
             f"{over_by_ms or 0:.0f}")
     if cache is not None and (hit := cache.get_json(*ckey)) is not None:
         return str(hit["text"])
@@ -314,9 +319,9 @@ def localise_description(
 
     try:
         response = quota_call(
-            MODEL,
+            _model(),
             lambda: client.models.generate_content(
-                model=MODEL, contents=prompt,
+                model=_model(), contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=_LOCALISE_SYSTEM,
                     temperature=temperature,

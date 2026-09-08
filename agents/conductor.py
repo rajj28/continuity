@@ -68,11 +68,12 @@ from telemetry.metrics import DRIFT_SYSTEMATIC, SYNC_OFFSET
 
 log = logging.getLogger("continuity.conductor")
 
-# gemini-3.5-flash rather than 2.5: the free tier's per-day quota is per model
-# family, and 2.5-flash is shared with the dubbing adaptation that runs far more
-# often. Reasoning and translation competing for one bucket meant a repair
-# could not be planned because the dub had spent the day.
-MODEL = "gemini-3.5-flash"
+# Resolved per backend by media/model.py. On Vertex this is gemini-2.5-flash,
+# billed to the project and free of the consumer tier's per-day cap that used
+# to stop a repair being planned because the dub had spent the day.
+def _default_model() -> str:
+    from media.model import model_for
+    return model_for("text")
 
 # A run that has not concluded in this many turns is not converging, and
 # letting it continue burns quota to arrive somewhere a human should have been
@@ -500,12 +501,13 @@ def conduct(
     genai: GenAI,
     *,
     scene: str = "S03",
-    model: str = MODEL,
+    model: str = "",
     max_turns: int = MAX_TURNS,
 ) -> Conclusion:
     """Run the reasoning loop until the model proposes, escalates, or stalls."""
     from google.genai import types
 
+    model = model or _default_model()
     incident = investigation.incident
     title, market = incident.title_id, incident.market
     toolbox = Toolbox(signal, title=title, market=market)
