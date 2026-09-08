@@ -354,3 +354,52 @@ tests:
         exp_samples:
           - labels: 'market_release_ready{market="de-DE",title="SINTEL"}'
             value: 0
+
+  # ------------------------------------------------------------------
+  # Regression: two exporter processes publishing the same threshold.
+  #
+  # Every OTel process stamps its own service.instance.id, so a one-shot
+  # run and a running daemon publish market_threshold twice, differing
+  # only in `instance`. A join matching `on (market)` then finds two
+  # series in the match group, Mimir answers 422 "found duplicate series
+  # for the match group", and EVERY scene rule stops evaluating -- which
+  # takes the whole verdict dark for a reason that looks nothing like
+  # its cause. It happened on the live stack.
+  #
+  # The normalising rules aggregate exporter identity away first. This
+  # case fails without them.
+  # ------------------------------------------------------------------
+  - interval: 30s
+    name: two exporter replicas do not break the join
+    input_series:
+      - series: 'market_threshold{market="de-DE",requirement="dub_sync_max_ms",instance="a",job="continuity/state"}'
+        values: '120x10'
+      - series: 'market_threshold{market="de-DE",requirement="dub_sync_max_ms",instance="b",job="continuity/state"}'
+        values: '120x10'
+      - series: 'market_required_checks{market="de-DE",instance="a"}'
+        values: '1x10'
+      - series: 'market_required_checks{market="de-DE",instance="b"}'
+        values: '1x10'
+      - series: 'dub_sync_offset_ms{title="SINTEL",scene="S03",market="de-DE"}'
+        values: '298x10'
+      - series: 'asset_stale{title="SINTEL",scene="S03",market="de-DE"}'
+        values: '0x10'
+    promql_expr_test:
+      # the join is single-valued again ...
+      - expr: market_threshold_current{requirement="dub_sync_max_ms"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_threshold_current{market="de-DE",requirement="dub_sync_max_ms"}'
+            value: 120
+      # ... so the scene rule evaluates instead of erroring ...
+      - expr: scene_requirement_met{requirement="dub_sync"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'scene_requirement_met{market="de-DE",requirement="dub_sync",scene="S03",title="SINTEL"}'
+            value: 0
+      # ... and the verdict is a real 0 rather than absent.
+      - expr: market_release_ready
+        eval_time: 3m
+        exp_samples:
+          - labels: 'market_release_ready{market="de-DE",title="SINTEL"}'
+            value: 0

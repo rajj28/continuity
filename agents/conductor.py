@@ -61,12 +61,18 @@ from agents.contracts import (
 )
 from agents.investigate import Investigation
 from agents.signal import Signal
+from media.dub.quota import DailyQuotaExhausted
+from media.dub.quota import call as quota_call
 from telemetry.genai import GenAI
 from telemetry.metrics import DRIFT_SYSTEMATIC, SYNC_OFFSET
 
 log = logging.getLogger("continuity.conductor")
 
-MODEL = "gemini-2.5-flash"
+# gemini-3.5-flash rather than 2.5: the free tier's per-day quota is per model
+# family, and 2.5-flash is shared with the dubbing adaptation that runs far more
+# often. Reasoning and translation competing for one bucket meant a repair
+# could not be planned because the dub had spent the day.
+MODEL = "gemini-3.5-flash"
 
 # A run that has not concluded in this many turns is not converging, and
 # letting it continue burns quota to arrive somewhere a human should have been
@@ -341,7 +347,10 @@ How you work:
   which value. It will be checked against the measured result afterwards, and
   being right for the wrong reason is recorded differently from being right.
 
-Be economical. Every tool call costs time and money."""
+Be economical, and be quick. You may request SEVERAL tools in one turn and
+you should -- asking one question per turn wastes your budget on round trips
+rather than on thinking. Gather what you need in two or three turns, then
+conclude."""
 
 
 def _briefing(investigation: Investigation, tier: AutonomyTier) -> str:
@@ -501,14 +510,39 @@ def conduct(
 
     for turn in range(1, max_turns + 1):
         genai.step("reason")
-        with genai.call(model, conversation_id=conversation,
+        try:
+          with genai.call(model, conversation_id=conversation,
                         temperature=0.2,
                         extra={"continuity.market": market,
                                "continuity.turn": turn}) as span:
-            response = client.models.generate_content(
-                model=model, contents=contents, config=config
+            # Through the shared budget like every other model call: the
+            # Conductor competes for the same free-tier quota as dubbing and
+            # description, and a reasoning loop that ignored that would starve
+            # the pipeline it is trying to repair.
+            response = quota_call(
+                model,
+                lambda: client.models.generate_content(
+                    model=model, contents=contents, config=config
+                ),
+                label=f"conduct({market})",
             )
             genai.record_usage(span, response, model)
+        except DailyQuotaExhausted as exc:
+            # Running out of budget mid-thought is a real operating condition,
+            # not a crash. Everything gathered so far is real evidence and a
+            # human can act on it; throwing it away to raise would be worse
+            # than handing over what we have and saying why.
+            genai.decision("conclusion", "budget_exhausted")
+            return Conclusion(
+                action="escalate", reason="budget_exhausted",
+                summary=(
+                    f"Reasoning stopped after {turn - 1} turn(s): the model "
+                    f"budget for today is spent. {len(toolbox.gathered)} "
+                    f"measurement(s) were gathered and are attached. {exc}"
+                )[:600],
+                evidence=list(toolbox.gathered.values()),
+                turns=turn - 1, rejections=rejections,
+            )
 
         calls = list(getattr(response, "function_calls", None) or [])
         if not calls:
@@ -573,12 +607,31 @@ def conduct(
                     result = toolbox.dispatch(call.name, args)
                 except ConductorError as exc:
                     result = {"error": str(exc)}
+            # Logged at INFO because the sequence of tool calls IS the
+            # reasoning. A run that concluded wrongly and a run that never
+            # looked are indistinguishable without it.
+            log.info("turn %d  %s(%s) -> %s", turn, call.name,
+                     ", ".join(f"{k}={v}" for k, v in args.items())[:90],
+                     str(result)[:110])
             contents.append(types.Content(
                 role="user",
                 parts=[types.Part.from_function_response(
                     name=call.name, response=result
                 )],
             ))
+
+        # Budget pressure, appended AFTER this turn's exchange so it lands in
+        # conversation order. An agent that does not know how much rope it has
+        # left will investigate until it runs out, which is exactly what
+        # happened before this existed: eight turns of good questions and no
+        # answer.
+        remaining = max_turns - turn
+        if 0 < remaining <= 2:
+            contents.append(types.Content(role="user", parts=[types.Part(
+                text=(f"You have {remaining} turn(s) left. Conclude now: call "
+                      f"propose_repair with the evidence you already have, or "
+                      f"escalate and say what a human needs to decide.")
+            )]))
 
     genai.decision("conclusion", "stalled")
     return Conclusion(

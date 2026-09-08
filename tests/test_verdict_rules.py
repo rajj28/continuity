@@ -112,7 +112,8 @@ def test_every_threshold_the_rules_join_on_is_publishable():
     from telemetry.exporters.thresholds import PUBLISHED, _dig
 
     rules_text = (RULES / "recording.yaml").read_text(encoding="utf-8")
-    needed = set(re.findall(r'market_threshold\{requirement="([^"]+)"\}', rules_text))
+    needed = set(re.findall(
+        r'market_threshold(?:_current)?\{requirement="([^"]+)"\}', rules_text))
     assert needed, "no threshold joins found; did the rules change shape?"
 
     publishable = set(PUBLISHED.values())

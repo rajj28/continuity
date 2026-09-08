@@ -62,6 +62,7 @@ FREE_TIER_RPM: dict[str, int] = {
     "gemini-2.5-flash-preview-tts": 3,
     "gemini-3.1-flash-tts-preview": 3,
     "gemini-2.5-flash": 10,
+    "gemini-3.5-flash": 10,
 }
 DEFAULT_RPM = 10
 

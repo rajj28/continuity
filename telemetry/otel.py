@@ -22,6 +22,7 @@ Blast radius is a TraceQL search on it:
 from __future__ import annotations
 
 import os
+import socket
 from base64 import b64encode
 from contextlib import contextmanager
 from pathlib import Path
@@ -92,9 +93,21 @@ def setup(
     if not _initialised:
         endpoint = env["OTLP_ENDPOINT"].rstrip("/")
         headers = _auth_header(env)
+        # A STABLE instance id, not the random UUID the SDK generates per
+        # process. Every restart of an exporter would otherwise publish the
+        # same fact under a new `instance` label, and a PromQL join matching
+        # `on (market)` then finds two series in the match group and fails the
+        # whole rule with a 422 -- which takes the verdict dark for reasons
+        # that look nothing like their cause.
+        #
+        # Keyed by service and host, so two exporters of different kinds stay
+        # distinct while a restart of either replaces its own series.
         resource = Resource.create({
             "service.name": service_name,
             "service.namespace": "continuity",
+            "service.instance.id": env.get(
+                "OTEL_INSTANCE_ID", f"{service_name}@{socket.gethostname()}"
+            ),
             "deployment.environment": env.get("ENVIRONMENT", "dev"),
         })
 

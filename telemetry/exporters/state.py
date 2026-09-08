@@ -37,12 +37,16 @@ import logging
 import sys
 import time
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from media.qc.profiles import load_profiles  # noqa: E402
+from media.qc.release import evaluate, technical_of  # noqa: E402
 from media.qc.report import QCStore  # noqa: E402
 from media.store import Store  # noqa: E402
+from media.qc.types import ProbeError  # noqa: E402
 from telemetry.exporters.thresholds import publish as publish_thresholds  # noqa: E402
 from telemetry.metrics import (  # noqa: E402
     DIAGNOSTIC_SERIES,
@@ -59,6 +63,7 @@ log = logging.getLogger("continuity.state")
 # ruler evaluates would let a series lapse between scrapes; publishing much
 # faster just burns free-tier ingestion.
 DEFAULT_INTERVAL_S = 30.0
+TITLE = "SINTEL"
 
 
 @dataclass
@@ -68,6 +73,7 @@ class Cycle:
     thresholds: int = 0
     measurements: int = 0
     assets: int = 0
+    market_checks: int = 0
     stale: int = 0
     unmeasured: int = 0
     diagnostics: int = 0
@@ -75,17 +81,49 @@ class Cycle:
     def describe(self) -> str:
         return (
             f"{self.thresholds} thresholds, {self.measurements} measurements, "
-            f"{self.diagnostics} diagnostics across {self.assets} assets "
-            f"({self.stale} stale, {self.unmeasured} unmeasured)"
+            f"{self.diagnostics} diagnostics, {self.market_checks} market "
+            f"checks across {self.assets} assets ({self.stale} stale, "
+            f"{self.unmeasured} unmeasured)"
         )
 
 
 def publish_once(
-    instruments: Instruments, store: Store, qc: QCStore
+    instruments: Instruments, store: Store, qc: QCStore,
+    *, master: Path | None = None, on: date | None = None,
 ) -> Cycle:
     cycle = Cycle(thresholds=publish_thresholds(instruments))
+    assets = store.all_assets()
 
-    for asset in store.all_assets():
+    # -- market-level: technical, rights, deliverables ---------------------
+    # As perishable as every other fact here. A one-shot release check puts
+    # these into Grafana and then lets them age out, at which point the
+    # coverage gate correctly reports the market as unmeasured -- which is the
+    # gate working, and also a market that quietly stopped being judged on its
+    # rights a few minutes after anyone last looked.
+    if master is not None and master.exists():
+        try:
+            technical = technical_of(master)
+            gauge = instruments.gauge(
+                "market_check_met",
+                "1 when a market-level release check is satisfied",
+            )
+            for market, profile in load_profiles().items():
+                for requirement, met, _detail in evaluate(
+                    market, profile, assets, technical,
+                    on=on or datetime.utcnow().date(),
+                ):
+                    gauge.set(1.0 if met else 0.0, {
+                        "title": TITLE, "market": market,
+                        "requirement": requirement,
+                    })
+                    cycle.market_checks += 1
+        except ProbeError as exc:
+            # A dead ffprobe must not take the measurement publishing with it.
+            # The market-level series simply go absent, which the coverage gate
+            # already treats as blocking -- the safe direction.
+            log.error("market-level checks skipped: %s", exc)
+
+    for asset in assets:
         # Only assets that belong to a market carry market-judged measurements.
         # A master or a scene cut has no market, and publishing one under a
         # blank label would create a series the rules cannot join on.
@@ -140,6 +178,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--store", default="out/store")
     parser.add_argument("--interval", type=float, default=DEFAULT_INTERVAL_S)
+    parser.add_argument("--master", default="out/scenes/S03.mp4",
+                        help="the file judged against each market's spec")
+    parser.add_argument("--on", help="evaluate rights windows on this ISO date")
     parser.add_argument("--once", action="store_true",
                         help="publish a single cycle and exit")
     args = parser.parse_args()
@@ -154,7 +195,10 @@ def main() -> int:
 
     try:
         while True:
-            cycle = publish_once(instruments, store, qc)
+            cycle = publish_once(
+                instruments, store, qc, master=Path(args.master),
+                on=date.fromisoformat(args.on) if args.on else None,
+            )
             log.info("published %s", cycle.describe())
             if args.once:
                 break

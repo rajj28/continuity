@@ -21,6 +21,25 @@ groups:
     interval: 30s
     rules:
 
+      # ---- normalise the published facts ------------------------------
+      # Every exporter PROCESS stamps its own service.instance.id, so a
+      # one-shot run and a running daemon publish the same threshold under
+      # different `instance` labels. The joins below match `on (market)`, and
+      # two series in the match group make that ambiguous -- Mimir answers
+      # "found duplicate series for the match group" with a 422 and every
+      # scene rule stops evaluating, which takes the entire verdict dark.
+      #
+      # Aggregating away exporter identity first makes the joins single-valued
+      # no matter how many replicas or leftover runs are publishing. The
+      # exporter also uses a stable instance id now (see telemetry/otel.py);
+      # this is the belt to that pair of braces, and it is the one that
+      # survives someone running a script by hand during a demo.
+      - record: market_threshold_current
+        expr: max by (market, requirement) (market_threshold)
+
+      - record: market_required_checks_current
+        expr: max by (market) (market_required_checks)
+
       # ---- per-scene checks -------------------------------------------
       # `group_left()` because a threshold is one series per market while the
       # measurements are many (one per scene).
@@ -29,7 +48,7 @@ groups:
         expr: |
           dub_sync_offset_ms
             <= bool on (market) group_left ()
-          market_threshold{requirement="dub_sync_max_ms"}
+          market_threshold_current{requirement="dub_sync_max_ms"}
         labels:
           requirement: dub_sync
 
@@ -42,7 +61,7 @@ groups:
         expr: |
           dub_line_overrun_ms
             <= bool on (market) group_left ()
-          market_threshold{requirement="line_overrun_max_ms"}
+          market_threshold_current{requirement="line_overrun_max_ms"}
         labels:
           requirement: line_overrun
 
@@ -54,7 +73,7 @@ groups:
         expr: |
           ad_collision_ms
             <= bool on (market) group_left ()
-          market_threshold{requirement="ad_collision_max_ms"}
+          market_threshold_current{requirement="ad_collision_max_ms"}
         labels:
           requirement: ad_collision
 
@@ -62,7 +81,7 @@ groups:
         expr: |
           subtitle_reading_rate_cps
             <= bool on (market) group_left ()
-          market_threshold{requirement="subtitle_max_cps"}
+          market_threshold_current{requirement="subtitle_max_cps"}
         labels:
           requirement: subtitle_rate
 
@@ -70,7 +89,7 @@ groups:
         expr: |
           audio_true_peak_dbtp
             <= bool on (market) group_left ()
-          market_threshold{requirement="true_peak_max_dbtp"}
+          market_threshold_current{requirement="true_peak_max_dbtp"}
         labels:
           requirement: true_peak
 
@@ -78,7 +97,7 @@ groups:
         expr: |
           speech_rate_wpm
             <= bool on (market) group_left ()
-          market_threshold{requirement="speech_rate_max_wpm"}
+          market_threshold_current{requirement="speech_rate_max_wpm"}
         labels:
           requirement: speech_rate
 
@@ -86,7 +105,7 @@ groups:
         expr: |
           semantic_fidelity_score
             >= bool on (market) group_left ()
-          market_threshold{requirement="semantic_fidelity_floor"}
+          market_threshold_current{requirement="semantic_fidelity_floor"}
         labels:
           requirement: semantic_fidelity
 
@@ -97,10 +116,10 @@ groups:
           abs(
             audio_loudness_lufs
               - on (market) group_left ()
-            market_threshold{requirement="loudness_target_lufs"}
+            market_threshold_current{requirement="loudness_target_lufs"}
           )
             <= bool on (market) group_left ()
-          market_threshold{requirement="loudness_tolerance_lu"}
+          market_threshold_current{requirement="loudness_tolerance_lu"}
         labels:
           requirement: loudness
 
@@ -153,7 +172,7 @@ groups:
         expr: |
           market_checks_present
             >= bool on (market) group_left ()
-          market_required_checks
+          market_required_checks_current
 
   - name: continuity_verdict
     interval: 30s
