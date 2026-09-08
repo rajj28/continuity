@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agents.conductor import conduct  # noqa: E402
+from agents.ledger import RejectionLog  # noqa: E402
 from agents.investigate import investigate  # noqa: E402
 from agents.mcp import grafana_client  # noqa: E402
 from agents.signal import Signal  # noqa: E402
@@ -32,6 +33,7 @@ def main() -> int:
     ap.add_argument("--market", required=True)
     ap.add_argument("--title", default="SINTEL")
     ap.add_argument("--scene", default="S03")
+    ap.add_argument("--store", default="out/store")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO,
@@ -40,7 +42,8 @@ def main() -> int:
     signal = Signal(grafana_client(env))
     tracer, meter = setup("continuity-conductor")
     instruments = Instruments(meter)
-    genai = GenAI(tracer, instruments, "conductor")
+    genai = GenAI(tracer, instruments, "conductor",
+                  rejections=RejectionLog(Path(args.store)))
 
     incident = Incident(
         fingerprint=f"manual:{args.title}:{args.market}",

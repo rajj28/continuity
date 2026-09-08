@@ -42,7 +42,7 @@ from agents.contracts import AutonomyTier, RepairIntent, Strategy, UnsupportedCl
 from agents.investigate import Investigation
 from agents.signal import Signal
 from telemetry.genai import GenAI
-from telemetry.metrics import DRIFT_SYSTEMATIC, SYNC_OFFSET
+from telemetry.metrics import DRIFT_SYSTEMATIC, SYNC_OFFSET, SYNC_SIGNED
 
 log = logging.getLogger("continuity.adk")
 
@@ -84,7 +84,7 @@ class Session:
     """
 
     def __init__(self, signal: Signal, investigation: Investigation,
-                 genai: GenAI, *, scene: str) -> None:
+                 genai: GenAI, *, scene: str, sink: Any = None) -> None:
         self.signal = signal
         self.investigation = investigation
         self.genai = genai
@@ -95,6 +95,10 @@ class Session:
         self.tier = earned_tier(
             **signal.repair_history(Strategy.RETIME.value, self.market)
         )
+        # Where to report progress as it happens. The control room streams
+        # these to an operator, because watching an agent decide is the
+        # difference between believing it reasoned and taking its word for it.
+        self.sink = sink or (lambda _event: None)
         self.intent: RepairIntent | None = None
         self.escalation: dict[str, str] | None = None
         self.rejections: list[str] = []
@@ -106,7 +110,9 @@ class Session:
         across localisation, audio delivery, timed text, technical
         conformance, rights, certification and packaging."""
         with self.genai.tool("list_failing_checks"):
-            return self.toolbox.dispatch("list_failing_checks", {})
+            result = self.toolbox.dispatch("list_failing_checks", {})
+        self.sink({"type": "tool", "name": "list_failing_checks", "result": result})
+        return result
 
     def query_metric(self, expr: str) -> dict:
         """Run an instant PromQL query and return its value. This is the only
@@ -116,7 +122,9 @@ class Session:
             expr: the PromQL expression to evaluate.
         """
         with self.genai.tool("query_metric"):
-            return self.toolbox.dispatch("query_metric", {"expr": expr})
+            result = self.toolbox.dispatch("query_metric", {"expr": expr})
+        self.sink({"type": "tool", "name": "query_metric", "result": result})
+        return result
 
     def get_threshold(self, requirement: str) -> dict:
         """The bar this market is judged against for one requirement.
@@ -125,8 +133,9 @@ class Session:
             requirement: e.g. dub_sync_max_ms or loudness_target_lufs.
         """
         with self.genai.tool("get_threshold"):
-            return self.toolbox.dispatch("get_threshold",
-                                         {"requirement": requirement})
+            result = self.toolbox.dispatch("get_threshold", {"requirement": requirement})
+        self.sink({"type": "tool", "name": "get_threshold", "result": result})
+        return result
 
     def repair_history(self, strategy: str) -> dict:
         """How a strategy has performed in this market: succeeded, lucky (it
@@ -137,7 +146,9 @@ class Session:
             strategy: RETIME, REMIX or REWRITE.
         """
         with self.genai.tool("repair_history"):
-            return self.toolbox.dispatch("repair_history", {"strategy": strategy})
+            result = self.toolbox.dispatch("repair_history", {"strategy": strategy})
+        self.sink({"type": "tool", "name": "repair_history", "result": result})
+        return result
 
     def propose_repair(
         self, strategy: str, params_json: str, predicted_series: str,
@@ -174,7 +185,7 @@ class Session:
             self.rejections.append(str(exc))
             log.warning("proposal rejected: %s", exc)
             return {
-                "accepted": False, "reason": str(exc),
+                "accepted": False, "rejected_because": str(exc),
                 "queries_you_actually_ran": sorted(self.toolbox.gathered),
                 "next": "correct the proposal, or escalate",
             }
@@ -210,6 +221,9 @@ class Session:
             "Series you can query (all take {title=...,market=...,scene=...}):",
             f"  {SYNC_OFFSET}          worst onset drift, ms",
             f"  {DRIFT_SYSTEMATIC}     1 if drift is uniform across lines, else 0",
+            f"  {SYNC_SIGNED}        SIGNED mean drift, ms. Positive means the dub arrives LATE.",
+            "                           dub_sync_offset_ms is a magnitude and does NOT say which",
+            "                           way. A RETIME shift must be the NEGATIVE of this value.",
             "  dub_line_overrun_ms      how far the worst line runs past its slot",
             "  audio_loudness_lufs      integrated loudness",
             "  audio_true_peak_dbtp     true peak",
@@ -263,6 +277,7 @@ class Session:
 async def conduct_adk(
     signal: Signal, investigation: Investigation, genai: GenAI,
     *, scene: str = "S03", model: str = "", max_turns: int = 8,
+    sink: Any = None,
 ) -> Session:
     """Run the ADK agent over one incident and return its session.
 
@@ -273,7 +288,8 @@ async def conduct_adk(
     from google.adk.runners import InMemoryRunner
     from google.genai import types
 
-    session = Session(signal, investigation, genai, scene=scene)
+    session = Session(signal, investigation, genai, scene=scene,
+                      sink=sink)
     runner = InMemoryRunner(agent=session.agent(model), app_name="continuity")
     adk_session = await runner.session_service.create_session(
         app_name="continuity", user_id="conductor"

@@ -115,6 +115,46 @@ class Signal:
             ))
         return out
 
+    def history(
+        self, expr: str, *, since: str = "now-6h", step_s: int = 120,
+    ) -> list[dict[str, Any]]:
+        """The same query over a window, one entry per series.
+
+        Instant queries answer "is it broken"; this answers "since when", which
+        is a different and often more useful question. A verdict that has been
+        red for six hours and a verdict that went red ninety seconds ago call
+        for different responses, and nothing in an instant query distinguishes
+        them.
+
+        Returns `[{"labels": {...}, "points": [(unix_seconds, value), ...]}]`,
+        oldest first. Values arrive from Prometheus as strings and are floats
+        here, because a caller comparing "0" to 0 gets the wrong answer
+        silently.
+        """
+        result = self.client.call("query_prometheus", {
+            "datasourceUid": self.uid,
+            "expr": expr,
+            "queryType": "range",
+            "startTime": since,
+            "endTime": "now",
+            "stepSeconds": step_s,
+        })
+        rows = result.get("data") if isinstance(result, dict) else None
+        out: list[dict[str, Any]] = []
+        for entry in rows or []:
+            points = []
+            for point in entry.get("values") or []:
+                if len(point) < 2:
+                    continue
+                try:
+                    points.append((float(point[0]), float(point[1])))
+                except (TypeError, ValueError):
+                    continue
+            if points:
+                out.append({"labels": entry.get("metric", {}) or {},
+                            "points": points})
+        return out
+
     # -- the questions the agents actually ask ------------------------------
 
     def verdict(self, title: str, market: str) -> Evidence | None:

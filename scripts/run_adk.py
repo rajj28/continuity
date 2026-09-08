@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agents.adk_conductor import conduct_adk  # noqa: E402
 from agents.investigate import investigate  # noqa: E402
+from agents.ledger import RejectionLog  # noqa: E402
 from agents.mcp import grafana_client  # noqa: E402
 from agents.signal import Signal  # noqa: E402
 from agents.wake import Incident  # noqa: E402
@@ -31,6 +32,7 @@ async def main() -> int:
     ap.add_argument("--market", required=True)
     ap.add_argument("--title", default="SINTEL")
     ap.add_argument("--scene", default="S03")
+    ap.add_argument("--store", default="out/store")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO,
@@ -38,7 +40,8 @@ async def main() -> int:
     env = load_env()
     signal = Signal(grafana_client(env))
     tracer, meter = setup("continuity-adk")
-    genai = GenAI(tracer, Instruments(meter), "conductor")
+    genai = GenAI(tracer, Instruments(meter), "conductor",
+                  rejections=RejectionLog(Path(args.store)))
 
     from media.model import describe
     log.info("model backend: %s", describe())

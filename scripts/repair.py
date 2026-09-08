@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agents.conductor import conduct  # noqa: E402
 from agents.contracts import AutonomyTier  # noqa: E402
 from agents.intents import IntentStore, StaleIntent, check_fresh  # noqa: E402
-from agents.ledger import Ledger  # noqa: E402
+from agents.ledger import Ledger, RejectionLog  # noqa: E402
 from agents.investigate import investigate  # noqa: E402
 from agents.mcp import grafana_client  # noqa: E402
 from agents.plan import plan as plan_repairs  # noqa: E402
@@ -54,7 +54,7 @@ from media.qc.sync import measure_dub  # noqa: E402
 from media.qc.types import Interval  # noqa: E402
 from media.store import Asset, ParentRef, Store  # noqa: E402
 from telemetry.genai import GenAI  # noqa: E402
-from telemetry.metrics import Instruments  # noqa: E402
+from telemetry.metrics import MEASUREMENT_SERIES, Instruments  # noqa: E402
 from telemetry.otel import asset_span, load_env, record_measurement, setup, shutdown  # noqa: E402
 
 log = logging.getLogger("continuity.repair")
@@ -120,7 +120,8 @@ def main() -> int:
     signal = Signal(grafana_client(env))
     tracer, meter = setup("continuity-repair")
     instruments = Instruments(meter)
-    genai = GenAI(tracer, instruments, "conductor")
+    genai = GenAI(tracer, instruments, "conductor",
+                  rejections=RejectionLog(Path(args.store)))
 
     incident = Incident(
         fingerprint=f"manual:{args.title}:{args.market}",
@@ -224,6 +225,48 @@ def main() -> int:
             # -- act ----------------------------------------------------
             genai.step("act")
             asset = store.load(intent.target_asset_id)
+
+            # Is the agent reasoning about the bytes that are actually there?
+            #
+            # It formed its prediction from Prometheus, and Prometheus is
+            # BEHIND: the exporter republishes every 30s and the ruler
+            # evaluates every 30s, so for up to a minute after a repair the
+            # published measurement still describes the version that was just
+            # replaced. Running the loop twice in that window is not a corner
+            # case, it is the obvious thing to do after a repair that did not
+            # clear every blocker -- and it produced a real over-correction:
+            # RETIME shifted -153ms and reached 120ms, then the next run read
+            # the stale 273 and shifted a further -273 on top, landing at
+            # 187.6ms and honestly recording itself FAILED.
+            #
+            # The QC report keyed by the current asset's own hash is the
+            # authority, because it is a fact about these exact bytes rather
+            # than a number in flight through a metrics pipeline. If the
+            # agent's baseline disagrees with it, the evidence predates the
+            # asset and no repair computed from it can be trusted.
+            current = qc.get(asset.sha256)
+            if current is not None:
+                for measurement in current.measurements:
+                    series = MEASUREMENT_SERIES.get(measurement.key)
+                    if series != intent.prediction.series:
+                        continue
+                    drift = abs(measurement.value - intent.prediction.baseline)
+                    if drift > max(0.5, abs(measurement.value) * 0.02):
+                        print(
+                            f"\nNOT ACTING. The proposal is computed from "
+                            f"{intent.prediction.series} = "
+                            f"{intent.prediction.baseline}, but this asset "
+                            f"(v{asset.version}, {asset.sha256[:12]}) actually "
+                            f"measures {measurement.value}.\n"
+                            f"Prometheus has not yet ingested the last repair. "
+                            f"Acting now would correct for a fault that has "
+                            f"already been corrected.\n"
+                            f"Wait for the next publish cycle and re-run."
+                        )
+                        genai.decision("authority", "stale_evidence")
+                        return 0
+                    break
+
             source = Path(asset.uri)
             # Strip any existing version suffix before adding the new one, or
             # a third repair produces S03_stem_v2_v3.wav and the name stops

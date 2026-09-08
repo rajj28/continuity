@@ -46,6 +46,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -60,13 +61,19 @@ from agents.contracts import (
     earned_tier,
 )
 from agents.investigate import Investigation
+from agents.specialists import ALL_TOOLS, Specialist
 from agents.signal import Signal
 from media.dub.quota import DailyQuotaExhausted
 from media.dub.quota import call as quota_call
 from telemetry.genai import GenAI
-from telemetry.metrics import DRIFT_SYSTEMATIC, SYNC_OFFSET
+from telemetry.metrics import DRIFT_SYSTEMATIC, SYNC_OFFSET, SYNC_SIGNED
 
 log = logging.getLogger("continuity.conductor")
+
+# Where the asset index lives. The blast-radius tool reads lineage from
+# disk rather than from traces, because an empty trace search means "not
+# observed lately" and would read as "nothing depends on this".
+_STORE_ROOT = Path(__file__).resolve().parents[1] / "out" / "store"
 
 # Resolved per backend by media/model.py. On Vertex this is gemini-2.5-flash,
 # billed to the project and free of the consumer tier's per-day cap that used
@@ -124,7 +131,7 @@ class Conclusion:
 # ---------------------------------------------------------------------------
 
 
-def _declarations() -> list[dict[str, Any]]:
+def _declarations(specialist: Specialist | None = None) -> list[dict[str, Any]]:
     """The tool surface offered to the model.
 
     Deliberately narrow. Every entry either returns a measurement with its
@@ -132,7 +139,27 @@ def _declarations() -> list[dict[str, Any]]:
     none that reveals the verdict -- the model works out whether a market can
     ship by looking at what is failing, exactly as a human would, rather than
     by reading the answer off the back of the book.
+
+    A `specialist` narrows it further, and that narrowing is an authority
+    boundary rather than a convenience. The compliance specialist is not given
+    `propose_repair`, so the function is absent from the protocol it speaks:
+    it cannot invent a fix for an uncleared right because there is no call it
+    could make that would express one. Prompts can be argued with. A missing
+    function cannot.
+
+    The strategy enum is narrowed the same way, so an agent that may only
+    REMIX cannot name RETIME even in a malformed call.
     """
+    allowed = set(specialist.tools) if specialist else set(ALL_TOOLS)
+    strategies = (sorted(s.value for s in specialist.strategies)
+                  if specialist else [s.value for s in EXECUTABLE])
+    return [
+        declaration for declaration in _all_declarations(strategies)
+        if declaration["name"] in allowed
+    ]
+
+
+def _all_declarations(strategies: list[str]) -> list[dict[str, Any]]:
     return [
         {
             "name": "list_failing_checks",
@@ -184,6 +211,54 @@ def _declarations() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "metric_history",
+            "description": (
+                "The same PromQL query over a window, summarised: first, last, "
+                "min, max and whether it changed. Answers 'since when' and "
+                "'was it ever good', which an instant read cannot. Use it to "
+                "tell a fresh regression from a standing condition, and to "
+                "check whether a previous repair actually held."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expr": {"type": "string",
+                             "description": "PromQL expression"},
+                    "hours": {"type": "integer",
+                              "description": "window, 1-24, default 6"},
+                },
+                "required": ["expr"],
+            },
+        },
+        {
+            "name": "blast_radius",
+            "description": (
+                "What repairing each asset in this market would invalidate "
+                "downstream. Read this BEFORE proposing: a repair gives the "
+                "asset a new hash, and anything built from it goes stale and "
+                "must be rebuilt before the market can ship. A proposal that "
+                "ignores its own consequences is half a plan."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "compare_markets",
+            "description": (
+                "The same series across every market, so you can see whether "
+                "this failure is peculiar to this market or common to all of "
+                "them. A fault every market shares usually means the source "
+                "or the spec, not the localisation."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "series": {"type": "string",
+                               "description": "metric name, e.g. dub_sync_offset_ms"},
+                },
+                "required": ["series"],
+            },
+        },
+        {
             "name": "propose_repair",
             "description": (
                 "Propose one repair and end the investigation. You must cite, "
@@ -196,7 +271,7 @@ def _declarations() -> list[dict[str, Any]]:
                 "properties": {
                     "strategy": {
                         "type": "string",
-                        "enum": [s.value for s in EXECUTABLE],
+                        "enum": strategies,
                     },
                     "params_json": {
                         "type": "string",
@@ -332,7 +407,136 @@ class Toolbox:
                 "earned_tier": earned_tier(**counts).name,
             }
 
+        if name == "metric_history":
+            # "Since when" is a different question from "is it broken", and
+            # usually the more useful one. A market red for four minutes is an
+            # incident; one red all day is a plan. Nothing in an instant query
+            # separates them, which is why an agent working only from `now`
+            # cannot tell a regression from a standing condition.
+            expr = str(args.get("expr", "")).strip()
+            if not expr:
+                return {"error": "empty expression"}
+            hours = max(1, min(24, int(args.get("hours", 6) or 6)))
+            series = self.signal.history(expr, since=f"now-{hours}h",
+                                         step_s=max(60, hours * 3600 // 60))
+            if not series:
+                return {"points": [], "note": "no samples in this window"}
+            if len(series) > 1:
+                # More than one series matched, and summarising an arbitrary
+                # one is how an agent ends up reasoning from a number that is
+                # not the number it asked for. Caught in exactly that way: an
+                # instant read said 17.4 ms while this reported 273 flat,
+                # because two exporter instances had both published over the
+                # window and `series[0]` was the stale one.
+                #
+                # So the ambiguity is returned rather than resolved. The agent
+                # can narrow the query; this tool cannot know which of them it
+                # meant.
+                return {
+                    "query": expr,
+                    "ambiguous": True,
+                    "matched": [
+                        {"labels": {k: v for k, v in s["labels"].items()
+                                    if k != "__name__"},
+                         "last": s["points"][-1][1]}
+                        for s in series
+                    ],
+                    "note": (
+                        "this expression matches several series. They usually "
+                        "differ only by `instance`, because every exporter "
+                        "restart publishes under a new one -- that is not "
+                        "several measurements, it is one measurement reported "
+                        "by successive processes. Aggregate away the "
+                        "difference: "
+                        "max by (title, market, scene) (<your expression>)"
+                    ),
+                }
+            points = series[0]["points"]
+            values = [v for _t, v in points]
+            # Remembered as evidence: a history is as citable as an instant
+            # read, and a proposal reasoning from a trend should be able to
+            # say so.
+            self._remember(Evidence(
+                kind="metric", query=expr, value=values[-1],
+                source=self.signal.uid, detail={"window_hours": hours},
+            ))
+            return {
+                "query": expr, "window_hours": hours, "samples": len(values),
+                "first": values[0], "last": values[-1],
+                "min": min(values), "max": max(values),
+                "changed": values[0] != values[-1],
+            }
+
+        if name == "blast_radius":
+            # What a repair here would invalidate. An agent proposing to
+            # rewrite the dub without knowing the package is built from it is
+            # proposing half a plan, and the half it left out is the one that
+            # puts the market back to blocked.
+            return self._blast_radius()
+
+        if name == "compare_markets":
+            # How other markets fare on the same requirement, and what fixed
+            # it where it is fixed. This is how a human specialist actually
+            # works -- "we saw this in France last week" -- and it is nearly
+            # free, because the series are already published per market.
+            requirement = str(args.get("series", "")).strip()
+            if not requirement:
+                return {"error": "name the series to compare"}
+            others = self.signal.observe_all(
+                f'{requirement}{{title="{self.title}"}}')
+            if not others:
+                return {"markets": [], "note": "no market publishes this"}
+            for evidence in others:
+                self._remember(evidence)
+            rows = sorted(
+                ({"market": e.detail.get("market", ""), "value": e.value}
+                 for e in others),
+                key=lambda r: r["market"],
+            )
+            return {"series": requirement, "markets": rows,
+                    "this_market": self.market}
+
         raise ConductorError(f"no such tool: {name}")
+
+    def _blast_radius(self) -> dict[str, Any]:
+        """Downstream dependants of this market's assets, from the index.
+
+        Read from the store rather than from traces. `Signal.blast_radius`
+        answers the same question with a TraceQL search, and for corroboration
+        that is the right tool -- but traces are sampled and expire, so an
+        empty answer there means "not observed lately" and would read here as
+        "nothing depends on this". That is the most dangerous wrong answer to
+        the question "what will my repair break".
+        """
+        from media.store import Store
+
+        try:
+            store = Store(_STORE_ROOT)
+            assets = store.all_assets()
+        except OSError:
+            return {"error": "no local asset index available"}
+
+        children: dict[str, list[str]] = {}
+        for asset in assets:
+            for parent in asset.parents:
+                if parent.asset_id == asset.id:
+                    continue          # a repair records its own predecessor
+                children.setdefault(parent.asset_id, []).append(asset.id)
+
+        out = []
+        for asset in assets:
+            if asset.market != self.market:
+                continue
+            downstream = sorted(set(children.get(asset.id, [])))
+            if downstream:
+                out.append({"asset": asset.id, "kind": asset.kind,
+                            "would_invalidate": downstream})
+        return {
+            "market": self.market,
+            "dependencies": sorted(out, key=lambda r: -len(r["would_invalidate"])),
+            "note": ("Repairing an asset gives it a new hash, so everything "
+                     "listed under it becomes stale until rebuilt."),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +580,42 @@ rather than on thinking. Gather what you need in two or three turns, then
 conclude."""
 
 
-def _briefing(investigation: Investigation, tier: AutonomyTier) -> str:
+def _system_for(specialist: Specialist | None) -> str:
+    """The system instruction, general or specialised.
+
+    A specialist gets its own brief in place of the Conductor's triage
+    instructions, because "repair the most consequential blocker you CAN fix"
+    is advice for an agent looking at the whole market and actively misleading
+    for one looking at a single dimension. What carries over is the part that
+    is true of every agent here: numbers come from tools, citations are
+    checked, predictions are falsifiable.
+    """
+    if specialist is None:
+        return _SYSTEM
+    return specialist.brief + "\n\n" + _COMMON
+
+
+_COMMON = """How you work, whatever your dimension:
+- You have no knowledge of this title's state except what your tools return.
+  Never state a number you did not obtain from a tool.
+- Investigate before you decide. Look at what is failing, then at the bar it
+  failed against, then at anything that would tell you WHY.
+- If you propose a repair you must cite the exact query strings you ran that
+  justify it. Citing a query you did not run will be rejected.
+- Your prediction must be falsifiable: which series, which direction, past
+  which value. It will be checked against the measured result afterwards, and
+  being right for the wrong reason is recorded differently from being right.
+- Stay inside your dimension. If the real problem belongs to another
+  specialist, say so and escalate rather than reaching across -- somebody else
+  is already looking at it.
+
+You may request SEVERAL tools in one turn and you should. Gather what you need
+in two or three turns, then conclude."""
+
+
+def _briefing(investigation: Investigation, tier: AutonomyTier, *,
+              specialist: Specialist | None = None,
+              focus: list[str] | None = None) -> str:
     incident = investigation.incident
     lines = [
         f"Title: {incident.title_id}",
@@ -386,6 +625,9 @@ def _briefing(investigation: Investigation, tier: AutonomyTier) -> str:
         "Series you can query (all take {title=...,market=...,scene=...}):",
         f"  {SYNC_OFFSET}          worst onset drift, ms",
         f"  {DRIFT_SYSTEMATIC}     1 if the drift is uniform across lines, else 0",
+        f"  {SYNC_SIGNED}        SIGNED mean drift, ms. Positive means the dub arrives LATE.",
+        "                           dub_sync_offset_ms is a magnitude and does NOT say which",
+        "                           way. A RETIME shift must be the NEGATIVE of this value.",
         "  dub_line_overrun_ms      how far the worst line runs past its slot",
         "  audio_loudness_lufs      integrated loudness",
         "  audio_true_peak_dbtp     true peak",
@@ -396,25 +638,45 @@ def _briefing(investigation: Investigation, tier: AutonomyTier) -> str:
         "",
         "Repairs available to you:",
     ]
-    lines += [f"  {s.value}: {d}" for s, d in EXECUTABLE.items()]
+    available = ({s: d for s, d in EXECUTABLE.items()
+                  if s in specialist.strategies} if specialist else EXECUTABLE)
+    if available:
+        lines += [f"  {s.value}: {d}" for s, d in available.items()]
+    else:
+        lines += [
+            "  NONE. You have no repair tool, deliberately: nothing in your",
+            "  dimension is fixed by processing a file. Escalate with the",
+            "  facts a human needs in order to act.",
+        ]
     lines += [
         "",
         f"Your current authority for this market is {tier.name}. It was derived "
         f"from measured repair history and you cannot change it.",
     ]
+    if focus:
+        lines += [
+            "",
+            "You have been asked about these failing checks specifically:",
+            *[f"  - {check}" for check in focus],
+            "Other dimensions of this market are being investigated by other "
+            "specialists at the same time. Do not re-triage the whole market.",
+        ]
     if investigation.findings:
         lines += ["", "The deterministic investigation already established:"]
         lines += [f"  - {f.claim}" for f in investigation.findings]
     if investigation.gaps:
         lines += ["", "It could NOT establish:"]
         lines += [f"  - {g}" for g in investigation.gaps]
-    lines += ["", "Investigate, then call propose_repair or escalate."]
+    lines += ["", "Investigate, then call propose_repair or escalate."
+              if (specialist is None or specialist.may_repair)
+              else "Investigate, then escalate."]
     return "\n".join(lines)
 
 
 def _validate(
     args: dict[str, Any], toolbox: Toolbox, genai: GenAI, *,
     title: str, market: str, scene: str, tier: AutonomyTier,
+    specialist: Specialist | None = None,
 ) -> RepairIntent:
     """Turn the model's proposal into a RepairIntent, or refuse it.
 
@@ -430,6 +692,21 @@ def _validate(
     if strategy not in EXECUTABLE:
         genai.rejected("unexecutable_strategy", strategy.value)
         raise UnsupportedClaim(f"{strategy.value} has no implementation")
+    if specialist is not None and strategy not in specialist.strategies:
+        # Defence in depth. The tool declaration already narrows the enum, so a
+        # well-formed call cannot name this strategy -- but the enum is a hint
+        # to the model and this is the contract. An audio specialist deciding
+        # the loudness problem is really a timing problem has to hand it back,
+        # not reach across.
+        genai.rejected("outside_remit",
+                       f"{specialist.name} may not {strategy.value}",
+                       title=title, market=market)
+        raise UnsupportedClaim(
+            f"the {specialist.name} specialist may not propose "
+            f"{strategy.value}; it may propose "
+            f"{sorted(s.value for s in specialist.strategies) or 'nothing'}. "
+            f"If this is the right repair, escalate and say so."
+        )
 
     cited = [str(q).strip() for q in args.get("evidence_queries", []) if str(q).strip()]
     justification = [toolbox.gathered[q] for q in cited if q in toolbox.gathered]
@@ -511,8 +788,16 @@ def conduct(
     scene: str = "S03",
     model: str = "",
     max_turns: int = MAX_TURNS,
+    specialist: Specialist | None = None,
+    focus: list[str] | None = None,
 ) -> Conclusion:
-    """Run the reasoning loop until the model proposes, escalates, or stalls."""
+    """Run the reasoning loop until the model proposes, escalates, or stalls.
+
+    With a `specialist`, this is that specialist's investigation: a narrowed
+    tool surface, a narrowed strategy set, and a brief about one dimension
+    rather than all eight. `focus` names the failing checks it is being asked
+    about, so it works its own dimension instead of re-triaging the market.
+    """
     from google.genai import types
 
     model = model or _default_model()
@@ -527,16 +812,17 @@ def conduct(
     tier = earned_tier(**history)
 
     config = types.GenerateContentConfig(
-        system_instruction=_SYSTEM,
+        system_instruction=_system_for(specialist),
         temperature=0.2,
-        tools=[types.Tool(function_declarations=_declarations())],
+        tools=[types.Tool(function_declarations=_declarations(specialist))],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(
             disable=True
         ),
     )
     contents: list[Any] = [
-        types.Content(role="user",
-                      parts=[types.Part(text=_briefing(investigation, tier))])
+        types.Content(role="user", parts=[types.Part(
+            text=_briefing(investigation, tier, specialist=specialist,
+                           focus=focus))])
     ]
     rejections: list[tuple[str, str]] = []
 
@@ -591,6 +877,12 @@ def conduct(
 
         contents.append(response.candidates[0].content)
 
+        # One user turn carrying one response per call, assembled here and
+        # appended once below. Gemini pairs responses to calls per TURN, so
+        # emitting them as separate user contents invites the same
+        # count-mismatch that the rejection path caused outright.
+        answers: list[Any] = []
+
         for call in calls:
             args = dict(call.args or {})
 
@@ -608,22 +900,37 @@ def conduct(
                 try:
                     intent = _validate(
                         args, toolbox, genai, title=title, market=market,
-                        scene=scene, tier=tier,
+                        scene=scene, tier=tier, specialist=specialist,
                     )
                 except UnsupportedClaim as exc:
                     # Refused, and told why. The model gets one chance to fix
                     # its own proposal, which is how a real reviewer would
                     # handle it -- and every refusal is already counted.
+                    #
+                    # The refusal goes back as this CALL'S function response,
+                    # not as a user message. The model is encouraged to call
+                    # several tools in one turn and does; Gemini then requires
+                    # exactly one function response per function call, and
+                    # answering a rejected proposal with prose left the turn
+                    # one response short. The next request failed with
+                    #
+                    #   400 INVALID_ARGUMENT: Please ensure that the number of
+                    #   function response parts is equal to the number of
+                    #   function call parts of the function call turn
+                    #
+                    # which reads like a client bug and is really "you did not
+                    # answer one of my questions". Guardrails have to reply in
+                    # the protocol they refused in.
                     rejections.append((call.name, str(exc)))
                     log.warning("proposal rejected: %s", exc)
-                    contents.append(types.Content(
-                        role="user",
-                        parts=[types.Part(text=(
-                            f"That proposal was rejected: {exc}\n"
-                            f"Queries you have actually run:\n" +
-                            "\n".join(f"  {q}" for q in toolbox.gathered) +
-                            "\nCorrect it, or escalate."
-                        ))],
+                    answers.append(types.Part.from_function_response(
+                        name=call.name,
+                        response={
+                            "accepted": False,
+                            "rejected_because": str(exc),
+                            "queries_you_actually_ran": sorted(toolbox.gathered),
+                            "next": "correct the proposal, or escalate",
+                        },
                     ))
                     continue
                 genai.decision("conclusion", "repair")
@@ -645,12 +952,12 @@ def conduct(
             log.info("turn %d  %s(%s) -> %s", turn, call.name,
                      ", ".join(f"{k}={v}" for k, v in args.items())[:90],
                      str(result)[:110])
-            contents.append(types.Content(
-                role="user",
-                parts=[types.Part.from_function_response(
-                    name=call.name, response=result
-                )],
+            answers.append(types.Part.from_function_response(
+                name=call.name, response=result
             ))
+
+        if answers:
+            contents.append(types.Content(role="user", parts=answers))
 
         # Budget pressure, appended AFTER this turn's exchange so it lands in
         # conversation order. An agent that does not know how much rope it has
