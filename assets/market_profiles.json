@@ -12,7 +12,7 @@
     "fr-FR": {
       "name": "France",
       "language": "French",
-      "ratings_body": "CSA",
+      "ratings_body": "CNC",
       "requires": [
         "SDH_CAPTIONS",
         "AUDIO_DESCRIPTION"
@@ -100,7 +100,7 @@
     "pt-BR": {
       "name": "Brazil",
       "language": "Portuguese (Brazil)",
-      "ratings_body": "ClassInd",
+      "ratings_body": "DEJUS",
       "requires": [
         "SDH_CAPTIONS"
       ],
@@ -137,7 +137,8 @@
       },
       "accessibility": {
         "ad_collision_max_ms": 0
-      }
+      },
+      "_ratings_note": "DEJUS issues under the ClassInd system; ClassInd is the system, not the body."
     },
     "hi-IN": {
       "name": "India",

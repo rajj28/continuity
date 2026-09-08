@@ -50,7 +50,8 @@ TECHNICAL_CHECKS = (
     "video_height", "frame_rate", "audio_channels",
     "audio_sample_rate", "video_codec", "pixel_format",
 )
-MARKET_CHECKS = ("rights_cleared", "deliverables_complete")
+MARKET_CHECKS = ("rights_cleared", "deliverables_complete", "certified",
+                 "metadata_localised", "forced_narrative")
 
 # Checks a market owes only if it asks for the deliverable they judge. The
 # recording rules evaluate them for everyone -- a rule cannot be conditional --

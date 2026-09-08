@@ -33,6 +33,7 @@ Grafana is correct again.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import time
@@ -66,6 +67,10 @@ log = logging.getLogger("continuity.state")
 # faster just burns free-tier ingestion.
 DEFAULT_INTERVAL_S = 30.0
 TITLE = "SINTEL"
+# The English copy a localised record must not still be. Kept here rather
+# than imported from stage 5 so the exporter does not depend on a script.
+SOURCE_SYNOPSIS = ("A lone warrior searches a hostile world for the "
+                   "dragon she raised from a hatchling.")
 
 
 @dataclass
@@ -89,6 +94,22 @@ class Cycle:
             f"assets ({self.stale} stale, "
             f"{self.unmeasured} unmeasured)"
         )
+
+
+def _forced_narrative_need(root: Path):
+    """The on-screen-text analysis, if one has been recorded for any cut.
+
+    Absent means "nobody has looked", which is a different answer from "there
+    is nothing there" and is reported as such.
+    """
+    from media.metadata import ForcedNarrativeNeed
+    path = Path(root) / "forced_narrative.json"
+    if not path.exists():
+        return None
+    try:
+        return ForcedNarrativeNeed(**json.loads(path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 def publish_once(
@@ -116,10 +137,13 @@ def publish_once(
                 "market_check_met",
                 "1 when a market-level release check is satisfied",
             )
+            master_sha = next(
+                (a.sha256 for a in assets if a.kind == "MASTER"), "")
             for market, profile in load_profiles().items():
                 for requirement, met, _detail in evaluate(
                     market, profile, assets, technical,
                     on=on or datetime.utcnow().date(),
+                    master_sha256=master_sha, store_root=store.root,
                 ):
                     gauge.set(1.0 if met else 0.0, {
                         "title": TITLE, "market": market,

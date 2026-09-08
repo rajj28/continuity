@@ -19,12 +19,19 @@ because a recording rule cannot write into a series that is also being pushed
 keeping them apart makes it obvious on a dashboard which failures are about a
 scene and which are about a market.
 
-Three kinds of failure, and the difference between them is the whole point:
+Four kinds of failure, and the difference between them is the whole point:
 
     technical      repairable by processing, sometimes. A wrong sample rate is
                    a resample. A stereo master where 5.1 is required is not.
     deliverables   repairable by BUILDING the missing thing.
     rights         not repairable at all, by anyone in this system.
+    certification  likewise, and tied to a specific cut: a certificate granted
+                   against an earlier master is not a certificate for this one.
+
+The evaluation itself lives in media/qc/release.py, because the state exporter
+runs exactly the same checks every thirty seconds. A report that computed them
+independently would eventually disagree with the dashboard, and then nobody
+would know which to believe.
 """
 
 from __future__ import annotations
@@ -37,11 +44,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from media.qc.deliverables import completeness  # noqa: E402
 from media.qc.profiles import load_profiles  # noqa: E402
-from media.qc.technical import conformance, measure_technical  # noqa: E402
+from media.qc.release import evaluate  # noqa: E402
+from media.qc.technical import measure_technical  # noqa: E402
 from media.qc.types import ProbeError  # noqa: E402
-from media.rights import clearance  # noqa: E402
 from media.store import Store  # noqa: E402
 from telemetry.metrics import Instruments  # noqa: E402
 from telemetry.otel import asset_span, setup, shutdown  # noqa: E402
@@ -86,6 +92,7 @@ def main() -> int:
     if not master.exists():
         raise SystemExit(f"{master} is missing; run scripts/stage1.py first")
     technical = measure_technical(master)
+    master_sha = next((a.sha256 for a in assets if a.kind == "MASTER"), "")
 
     tracer, meter = setup("continuity-release-check")
     instruments = Instruments(meter)
@@ -98,46 +105,30 @@ def main() -> int:
                 title_id=TITLE, market=market,
                 extra={"continuity.rights.evaluated_on": when.isoformat()},
             ) as span:
-                reasons: list[str] = []
-
-                # -- technical -------------------------------------------
-                results = conformance(technical, profile.get("technical", {}))
-                for requirement, met, detail in results:
+                # The SAME evaluation the state exporter runs every thirty
+                # seconds. Calling it rather than repeating it is the point of
+                # media/qc/release.py -- this script had drifted into its own
+                # copy, which is precisely how a report ends up disagreeing
+                # with a dashboard about whether a market can ship.
+                results = evaluate(
+                    market, profile, assets, technical,
+                    on=when, master_sha256=master_sha,
+                    store_root=store.root,
+                )
+                reasons = [
+                    f"{requirement}: {detail}"
+                    for requirement, met, detail in results if not met
+                ]
+                for requirement, met, _detail in results:
                     publish_check(instruments, title=TITLE, market=market,
-                                  requirement=f"tech_{requirement}", met=met)
-                    if not met:
-                        reasons.append(f"technical/{requirement}: {detail}")
-
-                # -- rights ----------------------------------------------
-                cleared = clearance(
-                    market, list(profile.get("rights_required", [])), on=when
-                )
-                publish_check(instruments, title=TITLE, market=market,
-                              requirement="rights_cleared", met=cleared.cleared)
-                if not cleared.cleared:
-                    reasons.append(f"rights: {cleared.reason()}")
-                span.set_attribute("continuity.rights.cleared", cleared.cleared)
-
-                # -- deliverables ----------------------------------------
-                complete = completeness(market, profile, assets)
-                publish_check(instruments, title=TITLE, market=market,
-                              requirement="deliverables_complete",
-                              met=complete.complete)
-                if not complete.complete:
-                    reasons.append(f"deliverables: {complete.reason()}")
-                span.set_attribute(
-                    "continuity.deliverables.missing", list(complete.missing)
-                )
+                                  requirement=requirement, met=met)
 
                 if reasons:
                     blocked[market] = reasons
-
-                status = "BLOCKED" if reasons else "clear"
-                log.info("%-7s %-8s %d technical, rights=%s, deliverables=%s",
-                         market, status, len(results),
-                         "yes" if cleared.cleared else "NO",
-                         "complete" if complete.complete else
-                         f"missing {len(complete.missing)}")
+                span.set_attribute("continuity.checks.failing", len(reasons))
+                log.info("%-7s %-8s %d of %d checks met", market,
+                         "BLOCKED" if reasons else "clear",
+                         len(results) - len(reasons), len(results))
     except ProbeError as exc:
         log.error("release check failed: %s", exc)
         return 1

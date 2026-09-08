@@ -1,0 +1,56 @@
+{
+  "_comment": [
+    "Certification state per market for SINTEL. Sintel is CC BY 3.0 and was",
+    "never submitted for theatrical classification anywhere, so the states",
+    "here model what a commercial title carries rather than claiming real",
+    "certificates. They are declared in this file, reviewable in a diff, and",
+    "nothing in code asserts them.",
+    "",
+    "master_sha256 is the cut a certificate was granted against. Re-cutting",
+    "invalidates it, which is the same hash comparison every other staleness",
+    "question in this system reduces to."
+  ],
+  "title_id": "SINTEL",
+  "certificates": [
+    {
+      "market": "fr-FR",
+      "body": "CNC",
+      "state": "granted",
+      "rating": "Tous publics",
+      "granted_on": "2026-07-02",
+      "master_sha256": "dcc02dec3debff48fcdf15469409132c0749f426bedca2269d22a00f1b4d7dd2",
+      "note": "Granted against the current master."
+    },
+    {
+      "market": "de-DE",
+      "body": "FSK",
+      "state": "granted",
+      "rating": "FSK 12",
+      "granted_on": "2026-06-18",
+      "master_sha256": "dcc02dec3debff48fcdf15469409132c0749f426bedca2269d22a00f1b4d7dd2"
+    },
+    {
+      "market": "pt-BR",
+      "body": "DEJUS",
+      "state": "pending",
+      "expected_by": "2026-09-20",
+      "note": "Submitted 2026-08-30; DEJUS decisions typically take three weeks."
+    },
+    {
+      "market": "hi-IN",
+      "body": "CBFC",
+      "state": "granted",
+      "rating": "U/A",
+      "granted_on": "2026-05-11",
+      "expires_on": "2026-08-31",
+      "master_sha256": "dcc02dec3debff48fcdf15469409132c0749f426bedca2269d22a00f1b4d7dd2",
+      "note": "CBFC certificates are time-limited; this one has lapsed."
+    },
+    {
+      "market": "ja-JP",
+      "body": "EIRIN",
+      "state": "not_submitted",
+      "note": "No submission has been made."
+    }
+  ]
+}
