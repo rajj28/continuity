@@ -133,12 +133,17 @@ class GenAI:
         if counts["output"] is not None:
             span.set_attribute(ATTR_OUTPUT_TOKENS, int(counts["output"]))
 
-        gauge = self.instruments.gauge(
-            TOKEN_USAGE, "Tokens consumed by a model call"
+        # A counter, not a gauge. Tokens are additive -- the question is
+        # always "how many did this cost over some window", never "how many
+        # are there right now" -- and a gauge from a one-shot process goes
+        # stale five minutes after the run, leaving the panel empty between
+        # runs. The semconv calls this a histogram for the same reason.
+        counter = self.instruments.counter(
+            TOKEN_USAGE, "Tokens consumed by model calls"
         )
         for kind, value in counts.items():
             if value is not None:
-                gauge.set(float(value), {
+                counter.add(float(value), {
                     "agent": self.agent, "model": model, "token_type": kind,
                 })
 

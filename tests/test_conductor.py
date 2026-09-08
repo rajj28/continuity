@@ -190,8 +190,10 @@ def test_tool_calls_and_tokens_are_measured(world):
     # the proposal cited SYNC, which list_failing_checks did not run ...
     assert "uncited_evidence" in instruments.rejections()
     assert instruments.tool_calls()["list_failing_checks"] == 1
+    # token usage is a counter, not a gauge: tokens are additive, and a gauge
+    # from a one-shot run goes stale five minutes later leaving the panel empty
     assert any(name == "gen_ai_client_token_usage"
-               for name, _ in instruments.gauges)
+               for name, _ in instruments.counters)
 
 
 # ---------------------------------------------------------------------------
