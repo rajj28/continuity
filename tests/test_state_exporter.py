@@ -205,3 +205,47 @@ def test_thresholds_are_republished_every_cycle(world):
     assert cycle.thresholds > 0
     assert "market_threshold" in inst.names()
     assert "market_required_checks" in inst.names()
+
+
+def test_a_repaired_asset_is_not_stale_against_its_own_predecessor(world):
+    """The bug the first successful repair created. A repair records the
+    version it replaced as a parent -- real lineage, but not an input -- and
+    comparing an asset's hash against its own predecessor marks every repaired
+    asset permanently stale the instant it succeeds. The fix becomes the reason
+    the market stays blocked.
+
+    Staleness asks whether something this was BUILT FROM has moved. An asset
+    cannot have been built from itself.
+    """
+    store, qc, _master, stem = world
+    repaired = Asset(
+        id=stem.id, kind=stem.kind, sha256="c" * 64, uri="gs://x/de_v2.wav",
+        bytes=1, title_id="SINTEL", scene_id="S01", market="de-DE", version=2,
+        parents=[
+            ParentRef(asset_id=stem.id, sha256=stem.sha256, role="pre_repair"),
+            *stem.parents,
+        ],
+    )
+    store.record(repaired)
+
+    assert store.is_stale(repaired) == []
+    inst = RecordingInstruments()
+    assert publish_once(inst, store, qc).stale == 0
+    assert inst.value_of("asset_stale") == 0.0
+
+
+def test_a_genuinely_moved_parent_is_still_stale(world):
+    """The negative control: skipping self-references must not skip real ones."""
+    store, qc, master, stem = world
+    master.sha256 = "z" * 64
+    store.record(master)
+    repaired = Asset(
+        id=stem.id, kind=stem.kind, sha256="c" * 64, uri="gs://x/de_v2.wav",
+        bytes=1, title_id="SINTEL", scene_id="S01", market="de-DE", version=2,
+        parents=[
+            ParentRef(asset_id=stem.id, sha256=stem.sha256, role="pre_repair"),
+            *stem.parents,
+        ],
+    )
+    store.record(repaired)
+    assert store.is_stale(repaired) == ["SINTEL:master"]

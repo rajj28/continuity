@@ -139,6 +139,16 @@ class Store:
         """
         stale: list[str] = []
         for parent in asset.parents:
+            if parent.asset_id == asset.id:
+                # A repair records the version it replaced as a parent, which
+                # is real lineage but not an input. Comparing an asset's hash
+                # against its own predecessor's would mark every repaired
+                # asset permanently stale the instant it succeeded -- the fix
+                # itself becoming the reason the market stays blocked.
+                #
+                # Staleness asks whether something this was BUILT FROM has
+                # moved. An asset cannot have been built from itself.
+                continue
             try:
                 current = self.load(parent.asset_id)
             except FileNotFoundError:

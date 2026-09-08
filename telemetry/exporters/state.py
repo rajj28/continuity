@@ -42,6 +42,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from agents.ledger import Ledger  # noqa: E402
+from agents.ledger import publish as publish_ledger  # noqa: E402
 from media.qc.profiles import load_profiles  # noqa: E402
 from media.qc.release import evaluate, technical_of  # noqa: E402
 from media.qc.report import QCStore  # noqa: E402
@@ -74,6 +76,7 @@ class Cycle:
     measurements: int = 0
     assets: int = 0
     market_checks: int = 0
+    repairs: int = 0
     stale: int = 0
     unmeasured: int = 0
     diagnostics: int = 0
@@ -82,7 +85,8 @@ class Cycle:
         return (
             f"{self.thresholds} thresholds, {self.measurements} measurements, "
             f"{self.diagnostics} diagnostics, {self.market_checks} market "
-            f"checks across {self.assets} assets ({self.stale} stale, "
+            f"checks, {self.repairs} ledger entries across {self.assets} "
+            f"assets ({self.stale} stale, "
             f"{self.unmeasured} unmeasured)"
         )
 
@@ -93,6 +97,11 @@ def publish_once(
 ) -> Cycle:
     cycle = Cycle(thresholds=publish_thresholds(instruments))
     assets = store.all_assets()
+    # The autonomy ledger. Republished from disk rather than
+    # incremented, because a repair is a short-lived job whose
+    # counter would age out five minutes after it exits -- and a
+    # ladder that forgets everything every five minutes is not one.
+    cycle.repairs = publish_ledger(instruments, Ledger(store.root))
 
     # -- market-level: technical, rights, deliverables ---------------------
     # As perishable as every other fact here. A one-shot release check puts
