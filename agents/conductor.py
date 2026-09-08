@@ -306,7 +306,20 @@ class Toolbox:
                 self.signal.threshold(self.market, requirement)
             )
             if evidence is None:
-                return {"value": None, "note": f"no threshold for {requirement}"}
+                # Say what WOULD have worked. A bare "not found" costs a whole
+                # turn to a near-miss like `ad_collision_ms` for
+                # `ad_collision_max_ms`, and turns are the budget.
+                available = sorted(
+                    e.detail.get("requirement", "")
+                    for e in self.signal.observe_all(
+                        f'market_threshold{{market="{self.market}"}}'
+                    )
+                )
+                return {
+                    "value": None,
+                    "note": f"no threshold named {requirement!r}",
+                    "available": [a for a in available if a],
+                }
             return {"value": evidence.value, "query": evidence.query}
 
         if name == "repair_history":
@@ -327,8 +340,16 @@ class Toolbox:
 
 _SYSTEM = """You are the Release Conductor for a global media release system.
 
-A market is blocked. Your job is to work out why and decide ONE next action:
-propose a specific repair, or escalate to a human.
+A market is blocked, often by several things at once. Your job is to work out
+why and decide ONE next action: propose a specific repair, or escalate.
+
+Repair the most consequential blocker you CAN fix, even when others remain.
+The loop runs again after every repair, so fixing three of four blockers is
+progress and the alert will bring you back for the fourth. Escalating because
+one blocker is unrepairable abandons the three that were not -- that is the
+most common way this goes wrong, so check yourself against it before you
+escalate. Escalate only when NOTHING you could do would move the market
+forward.
 
 How you work:
 - You have no knowledge of this title's state except what your tools return.
@@ -340,7 +361,8 @@ How you work:
 - Prefer the least invasive repair your evidence supports.
 - Some blockers cannot be repaired by anyone here. A right that is not cleared
   is not a defect in a file. A stereo master where 5.1 is required is not a
-  processing problem. Escalate those; do not invent a fix.
+  processing problem. Never invent a fix for those -- but if something else in
+  the same market IS repairable, repair that and let the alert bring you back.
 - When you propose a repair you must cite the exact query strings you ran that
   justify it. Citing a query you did not run will be rejected.
 - Your prediction must be falsifiable: which series, which direction, past
