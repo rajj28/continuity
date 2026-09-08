@@ -68,13 +68,37 @@ def _env() -> dict[str, str]:
     return load_env()
 
 
-def using_vertex(env: dict[str, str] | None = None) -> bool:
-    env = env if env is not None else _env()
-    return bool(env.get("GCP_PROJECT_ID")) and bool(
+# Environment variables Google sets on its own compute. Their presence means
+# Application Default Credentials will resolve from the metadata server.
+_GOOGLE_COMPUTE = ("K_SERVICE", "K_REVISION", "FUNCTION_TARGET", "GAE_ENV")
+
+
+def _credentials_available(env: dict[str, str]) -> bool:
+    """Whether Vertex will authenticate without us handing it a key file.
+
+    A key file is one way. It is not the good way, and on Cloud Run it is not
+    the way at all: the service runs AS a service account and ADC comes from
+    the metadata server, which is the entire reason no key is baked into the
+    image.
+
+    Requiring GOOGLE_APPLICATION_CREDENTIALS therefore answered "no Vertex
+    backend" on exactly the deployment where Vertex works best. The hosted
+    control room's Investigate button failed with "no model backend
+    configured" while the identical code reasoned happily on a laptop -- and
+    it failed only on the one path nobody had exercised over HTTP, because
+    every other hosted endpoint reads Grafana rather than a model.
+    """
+    return bool(
         env.get("GOOGLE_APPLICATION_CREDENTIALS")
         or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         or env.get("GCP_USE_ADC")
+        or any(os.environ.get(name) for name in _GOOGLE_COMPUTE)
     )
+
+
+def using_vertex(env: dict[str, str] | None = None) -> bool:
+    env = env if env is not None else _env()
+    return bool(env.get("GCP_PROJECT_ID")) and _credentials_available(env)
 
 
 def model_for(role: str, env: dict[str, str] | None = None) -> str:
@@ -113,6 +137,8 @@ def configure_environment(env: dict[str, str] | None = None) -> None:
         return
     credentials = (env.get("GOOGLE_APPLICATION_CREDENTIALS")
                    or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""))
+    # Absent on Cloud Run, and correctly so -- ADC comes from the metadata
+    # server there. Only resolve a path when one was actually given.
     if credentials:
         path = Path(credentials)
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(
