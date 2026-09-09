@@ -110,7 +110,7 @@ of the product) · Sintel, © Blender Foundation, CC BY 3.0
 
 # 9 · Project story — paste everything below this line
 
-![Continuity system diagram](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/system-diagram.png)
+![Continuity system diagram](https://continuity-control-z6txmgck2a-el.a.run.app/img/system-diagram.png)
 
 **A film does not ship to the world once. It ships fifty times.**
 
@@ -158,13 +158,13 @@ record, release check, package. They stream their own output as they go,
 because they *are* the scripts in the repository, started as processes. Nothing
 was reimplemented to make a screen move.
 
-![A build running](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/02-new-release.png)
+![A build running](https://continuity-control-z6txmgck2a-el.a.run.app/img/02-new-release.png)
 
 **And you can play what came out.** Every produced file is served by asset id
 out of a content-addressed store: the scene as delivered, the dub, the
 described track, and the packaged deliverable with all of it muxed together.
 
-![What the agents made](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/05-outputs.png)
+![What the agents made](https://continuity-control-z6txmgck2a-el.a.run.app/img/05-outputs.png)
 
 A dub you cannot hear is indistinguishable from one that was never made. That
 is why the demo video plays them at 1:12 rather than describing them.
@@ -184,7 +184,7 @@ is why the demo video plays them at 1:12 rather than describing them.
 | **Certification** | ratings body, state, and whether the certificate was granted against *this* cut |
 | **Packaging** | required deliverables complete, storefront record localised, forced narratives present |
 
-![The control room](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/03-readiness.png)
+![The control room](https://continuity-control-z6txmgck2a-el.a.run.app/img/03-readiness.png)
 
 Those are the ones it runs today. The same shape extends to the rest of what a
 real delivery is checked against — scan type and active picture, colour
@@ -198,7 +198,7 @@ file. None of them changes the architecture.
 
 **And the dimensions that cannot be repaired say so, and say why.**
 
-![Compliance](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/06-compliance.png)
+![Compliance](https://continuity-control-z6txmgck2a-el.a.run.app/img/06-compliance.png)
 
 Japan fails on a right that was never granted, a right whose window does not
 open until the 15th, and a certificate nobody has submitted. Germany's
@@ -221,13 +221,13 @@ market_release_ready =
     * (1 - market_has_stale_assets)    # nothing built on a stale parent
 ```
 
-![Grafana owns the verdict](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/14-grafana-verdict.png)
+![Grafana owns the verdict](https://continuity-control-z6txmgck2a-el.a.run.app/img/14-grafana-verdict.png)
 
 **2 · Grafana initiates the work.** A Grafana-managed alert fires on
 `market_release_ready < 1` and POSTs to a Cloud Run receiver. The agents do not
 poll and have no scheduler. This is the deployed receiver's own log:
 
-![The alert answering](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/13-alert-received.png)
+![The alert answering](https://continuity-control-z6txmgck2a-el.a.run.app/img/13-alert-received.png)
 
 Three markets woken in the same second, and a second rule underneath watching
 whether the last repair actually held. Rendered by `scripts/wakelog.py`, which
@@ -248,7 +248,7 @@ semantic conventions: tool calls, how each run ended, model call duration,
 control-loop steps, and guardrail refusals as
 `continuity_agent_rejections_total{reason}`.
 
-![Grafana watching the agents](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/15-grafana-agents.png)
+![Grafana watching the agents](https://continuity-control-z6txmgck2a-el.a.run.app/img/15-grafana-agents.png)
 
 The agents are not merely watched *by* this stack. They are watched *in the
 same stack they read their instructions from.* Three dashboards are generated
@@ -295,7 +295,7 @@ passed, but the prediction did not hold) or `failed`. `lucky` raises the
 denominator and not the numerator, so a strategy cannot earn autonomy by
 coincidence.
 
-![A proposal awaiting a human](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/09-proposal.png)
+![A proposal awaiting a human](https://continuity-control-z6txmgck2a-el.a.run.app/img/09-proposal.png)
 
 **The demo shows one of these going wrong, live.** At 3:32 the audio specialist
 proposes a REMIX on pt-BR, predicting
@@ -303,7 +303,7 @@ proposes a REMIX on pt-BR, predicting
 real audio and lands at **−23.32** — four and a half decibels better than it
 started, and short of what it promised. The ledger records it as **failed**.
 
-![The ledger](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/10-ledger.png)
+![The ledger](https://continuity-control-z6txmgck2a-el.a.run.app/img/10-ledger.png)
 
 In the same investigation, the localisation specialist looked at the sync
 failure and **refused to touch it**, because `dub_drift_systematic = 0` meant a
