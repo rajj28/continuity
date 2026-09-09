@@ -44,3 +44,6 @@ bin/cloudflared.exe
 .cloudrun-env.yaml
 out/clips/
 out/chrome-profile/
+out/edit/
+out/voice/
+out/deliverables/

@@ -226,6 +226,27 @@ class Take:
         x, y, w, h = box
         return self._fit(x - pad, y - pad, w + pad * 2, h + pad * 2)
 
+    async def rect_of_all(self, selector: str, pad: float = 24.0):
+        """A 16:9 view containing EVERY match, not just the first.
+
+        Framing one row of a list and padding outwards lands wherever the
+        padding happens to reach -- which put the lineage shot half over the
+        neighbouring column. Taking the union of the rows frames the group
+        that is actually being talked about.
+        """
+        box = await self.js(
+            "(() => { const els = [...document.querySelectorAll(%r)];"
+            " if (!els.length) return null;"
+            " const r = els.map(e => e.getBoundingClientRect());"
+            " const x = Math.min(...r.map(b => b.left));"
+            " const y = Math.min(...r.map(b => b.top));"
+            " return [x, y, Math.max(...r.map(b => b.right)) - x,"
+            "         Math.max(...r.map(b => b.bottom)) - y]; })()" % selector)
+        if not box:
+            raise RuntimeError(f"nothing matches {selector!r} to focus on")
+        x, y, w, h = box
+        return self._fit(x - pad, y - pad, w + pad * 2, h + pad * 2)
+
     def _fit(self, x: float, y: float, w: float, h: float):
         """Grow a box to 16:9 and clamp it inside the viewport."""
         aspect = self.width / self.height
@@ -344,58 +365,21 @@ class Take:
 # Clips
 # ---------------------------------------------------------------------------
 
-CONTROL = "https://continuity-control-z6txmgck2a-el.a.run.app"
+from scripts.clips import ORDER, SHOTS
 
 
-async def clip_test(out: Path, token: str) -> Path:
-    """The proof-of-quality clip: the board, the verdict, a live investigation.
-
-    Framed rather than merely captured. A 1080p frame of this control room
-    holds far more than a viewer can read in the seconds they get, so the
-    camera pushes into whatever the narration is about and pulls back out
-    between beats. Shown whole it is a screenshot of a dashboard; shown one
-    panel at a time it is an argument.
-    """
-    async with Take("test", out, fps=12) as take:
-        await take.goto(CONTROL, settle=2)
-        await take.wait_for("document.querySelectorAll('#rows .row').length > 0")
-        await take.js(f"sessionStorage.setItem('op', {token!r})")
-        await asyncio.sleep(1.5)
-
-        # Establish, then go and read the counts.
-        await take.hold(1.5)
-        await take.focus(".counts", 1.4, pad=18)
-        await take.hold(1.8)
-
-        # The matrix, and then one market's row within it.
-        await take.push(await take.rect_of("table.matrix", 10), 1.4)
-        await take.hold(2.2)
-        await take.focus('#rows .row[data-m="de-DE"]', 1.2, pad=14)
-        await take.hold(2.0)
-
-        # The verdict, which is the claim the whole project rests on.
-        await take.js(
-            "document.querySelector('#rows .row[data-m=\"ja-JP\"]').click()")
-        await take.wait_for("!!document.getElementById('investigate')")
-        await take.wide(1.0)
-        await take.focus("#detail .pad", 1.4, pad=16)
-        await take.hold(3.0)
-
-        # The swarm. Pulled back to the trace panel and held there, at the
-        # pace the agents actually work -- the elapsed time is the evidence.
-        await take.js("document.getElementById('investigate').click()")
-        await take.push(await take.rect_of("#trace", 12), 1.2)
-        await take.watch(44.0)
-        await take.hold(1.5)
+async def shoot(name: str, out: Path, token: str, fps: int = 12) -> Path:
+    """Run one shot from the shot list and return the clip."""
+    action, profile = SHOTS[name]
+    async with Take(name, out, fps=fps, profile=profile) as take:
+        await action(take, token)
         return take.assemble()
-
-
-CLIPS = {"test": clip_test}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--clip", default="test", choices=sorted(CLIPS))
+    ap.add_argument("--clip", default="board",
+                    choices=sorted(SHOTS) + ["all"])
     ap.add_argument("--out", default="out/clips")
     args = ap.parse_args()
 
@@ -407,13 +391,15 @@ def main() -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    path = asyncio.run(CLIPS[args.clip](out, token))
-    size = path.stat().st_size / 1e6
-    duration = subprocess.run([
-        shutil.which("ffprobe") or "ffprobe", "-v", "error",
-        "-show_entries", "format=duration", "-of", "csv=p=0", str(path),
-    ], capture_output=True, text=True).stdout.strip()
-    print(f"\n{path}  {size:.1f} MB  {float(duration or 0):.1f}s")
+    names = ORDER if args.clip == "all" else [args.clip]
+    for name in names:
+        path = asyncio.run(shoot(name, out, token))
+        duration = subprocess.run([
+            shutil.which("ffprobe") or "ffprobe", "-v", "error",
+            "-show_entries", "format=duration", "-of", "csv=p=0", str(path),
+        ], capture_output=True, text=True).stdout.strip()
+        print(f"  {name:<15} {float(duration or 0):>5.1f}s  "
+              f"{path.stat().st_size / 1e6:>5.1f} MB")
     return 0
 
 
