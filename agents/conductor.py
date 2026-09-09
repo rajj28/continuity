@@ -61,6 +61,7 @@ from agents.contracts import (
     earned_tier,
 )
 from agents.investigate import Investigation
+from agents.mcp import McpToolError
 from agents.specialists import ALL_TOOLS, Specialist
 from agents.signal import Signal
 from media.dub.quota import DailyQuotaExhausted
@@ -944,8 +945,20 @@ def conduct(
             with genai.tool(call.name, getattr(call, "id", "") or ""):
                 try:
                     result = toolbox.dispatch(call.name, args)
-                except ConductorError as exc:
-                    result = {"error": str(exc)}
+                except (ConductorError, McpToolError) as exc:
+                    # A tool that RAISES kills the whole run; a tool that
+                    # returns an error lets the model correct and carry on --
+                    # and the loop already has the machinery for that.
+                    #
+                    # The compliance specialist was lost mid-investigation to
+                    # one malformed PromQL expression: Prometheus replied
+                    # `parse error: unexpected "{"`, the McpToolError escaped
+                    # this handler because only ConductorError was caught, and
+                    # a market's entire rights review ended because a model
+                    # mistyped a brace. Writing a bad query is a thing models
+                    # do. It should cost a turn, not the agent.
+                    result = {"error": str(exc)[:400],
+                              "hint": "check the expression and try again"}
             # Logged at INFO because the sequence of tool calls IS the
             # reasoning. A run that concluded wrongly and a run that never
             # looked are indistinguishable without it.

@@ -42,3 +42,5 @@ bin/cloudflared.exe
 
 # transient: holds every token the deployed service needs
 .cloudrun-env.yaml
+out/clips/
+out/chrome-profile/
