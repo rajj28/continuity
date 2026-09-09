@@ -277,6 +277,44 @@ async def compliance(take, token: str):
     await take.hold(4.0)
 
 
+async def dimensions(take, token: str):
+    """Across the matrix a column at a time: this is not a dubbing tool.
+
+    The film has just spent twenty-four seconds on audio, which is the moment
+    a viewer decides what kind of system this is. Every column is a different
+    trade with a different failure mode -- a frame rate is not a right, a
+    right is not a certificate, and a certificate is not a storefront record
+    -- and the only way to say that without a list is to move across them.
+
+    Addressed by `data-dim` rather than by column index, so inserting a
+    dimension does not silently reframe the shot onto its neighbour.
+    """
+    await _open_board(take)
+    await take.push(await take.rect_of("table.matrix", 8), 1.2)
+    await take.hold(2.5)
+    for group in (["Localisation", "Audio"],
+                  ["Timed text", "Accessibility"],
+                  ["Technical"],
+                  ["Rights", "Certification"],
+                  ["Packaging"]):
+        selector = ", ".join('[data-dim="%s"]' % d for d in group)
+        await take.push(await take.rect_of_all(selector, 22), 1.0)
+        await take.hold(3.2)
+    await take.push(await take.rect_of("table.matrix", 8), 1.3)
+    await take.hold(4.5)
+
+
+async def endcard(take, token: str):
+    """The last frame, and the only one that is not the product.
+
+    Served over http rather than opened as a file:// URL: Chrome treats a
+    local file as an opaque origin and the fonts and layout that make it
+    match the rest of the film are the first things to go.
+    """
+    await take.goto(LOCAL + "/endcard", settle=2)
+    await take.hold(9.0)
+
+
 async def verdict(take, token: str):
     """The three factors that multiply into the verdict, and their PromQL."""
     await take.goto(CONTROL + "/#de-DE", settle=2)
@@ -462,6 +500,8 @@ SHOTS = {
     "outputs": (outputs, None),
     "listen": (listen, None),
     "compliance": (compliance, None),
+    "dimensions": (dimensions, None),
+    "endcard": (endcard, None),
     "verdict": (verdict, None),
     "coverage": (coverage, None),
     "lineage": (lineage, None),
@@ -486,12 +526,18 @@ BLOCKS = {
     "vo2": ["release", "lineage", "outputs"],
     # The one block whose soundtrack is the product. See scripts/listen.py.
     "vo2b": ["listen"],
+    "vo2c": ["dimensions"],
     "vo3": ["verdict", "grafana_dash", "grafana_verdict"],
     "vo4": ["coverage", "grafana_rule"],
     "vo5": ["swarm"],
     "vo5b": ["compliance"],
     "vo6": ["repairs", "autonomy", "grafana_agent"],
-    "vo7": ["unrepairable", "close"],
+    # Not `unrepairable` any more. Three clips came to thirty-two seconds
+    # against twenty of narration, and since a group is trimmed from the end,
+    # the end card -- the only frame carrying the links -- was cut off
+    # entirely. What that shot said is now said better by the compliance
+    # panel a minute earlier, with the actual reasons on screen.
+    "vo7": ["close", "endcard"],
 }
 
 ORDER = [name for block in BLOCKS.values() for name in block

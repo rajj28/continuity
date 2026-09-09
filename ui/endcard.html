@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Continuity</title>
+<!--
+  The last frame of the film, and the only one that is not the product.
+
+  A demo that ends on a dashboard leaves a judge with nothing to type. This
+  leaves them the two links and the stack, held long enough to read, in the
+  same palette as everything before it so it reads as the end of one thing
+  rather than a slide bolted on.
+
+  Kept clear of the bottom third: the burned-in captions sit there.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0b0a; --ink: #f6f5f1; --ink-2: #a8a69c; --ink-3: #6b6960;
+    --ink-4: #4a4842; --line: #262623; --good-ink: #67d167;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card { width: min(1320px, 84vw); padding-bottom: 6vh; }
+  h1 {
+    margin: 0; font: 600 74px/1 var(--sans); letter-spacing: .3em;
+  }
+  h1 + p {
+    margin: 20px 0 0; font: 400 25px/1 var(--sans); color: var(--ink-3);
+    letter-spacing: .06em;
+  }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 42px 0 36px; }
+  dl { display: grid; grid-template-columns: 190px 1fr; gap: 20px 32px;
+       margin: 0; }
+  dt { font: 600 14px/1.9 var(--sans); letter-spacing: .17em;
+       text-transform: uppercase; color: var(--ink-4); }
+  dd { margin: 0; font: 22px/1.5 var(--mono); color: var(--ink-2); }
+  dd b { color: var(--ink); font-weight: 500; }
+  .said { margin: 44px 0 0; font-size: 19px; color: var(--ink-3);
+          line-height: 1.7; }
+  .said em { font-style: normal; color: var(--good-ink); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>CONTINUITY</h1>
+    <p>Global release autopilot — agents ship it, Grafana judges it</p>
+    <hr>
+    <dl>
+      <dt>Control room</dt>
+      <dd><b>continuity-control-z6txmgck2a-el.a.run.app</b></dd>
+      <dt>Source</dt>
+      <dd><b>github.com/rajj28/continuity</b></dd>
+      <dt>Built on</dt>
+      <dd>Vertex AI · Agent Development Kit · Cloud Run · Grafana Cloud</dd>
+    </dl>
+    <p class="said">Every number in this film was <em>measured from a real
+      file</em>. No mock data, no staged runs, no numbers written by a model.</p>
+  </div>
+</body>
+</html>

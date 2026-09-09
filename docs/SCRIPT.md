@@ -74,6 +74,26 @@ is a claim about a sound; this is the sound.
 The cues are generated as VO 8, VO 9 and VO 10 and are never blocks of their
 own.
 
+## VO 2c — not a dubbing tool (over: dimensions)
+
+Placed here on purpose. The film has just spent twenty-four seconds on audio,
+which is the moment a viewer decides what kind of system this is, and the
+answer is eight columns wide. Every figure named is on the screen while it is
+said.
+
+> This is not a dubbing tool.
+>
+> Across five markets: eighty-seven checks, in eight dimensions.
+>
+> Picture — resolution, frame rate, codec. Audio — loudness against the
+> territory's own target, and true peak. Timed text — reading rate, and the
+> on-screen signs a viewer has to see even with subtitles off.
+>
+> Rights, by territory and by window. Certification, by body and by cut. And
+> the storefront record a viewer actually reads.
+>
+> Any one of them blocks a release. Each one says so by name.
+
 ## VO 5b — the ones nobody here can fix (over: compliance)
 
 > Japan is blocked on four things, and not one of them is a file.
@@ -135,6 +155,11 @@ own.
 > Three are not — and each can tell you exactly what it is waiting for.
 >
 > Nobody checked any of this by hand.
+>
+> A film ships fifty times. A series ships fifty times an episode, every week.
+> A live event ships while it is still going out.
+>
+> Same loop. Same gate. Same evidence.
 
 ---
 
