@@ -42,7 +42,17 @@ PROFILE = ROOT / "out" / "chrome-profile-copy"
 
 
 async def _open_board(take, hash_: str = "") -> None:
-    await take.goto(CONTROL + hash_, settle=2)
+    """The board, from the instance that has a film on it.
+
+    Local rather than deployed, for one visible reason: every shot that holds
+    the whole page holds the New Release panel with it, and on the deployed
+    service that panel correctly says it has nothing to build from. Cutting
+    between an empty picker and a full one inside the same minute reads as two
+    different systems. The numbers are identical either way -- both read the
+    same Grafana -- so the only thing this choice changes is that the film is
+    one session instead of two.
+    """
+    await take.goto(LOCAL + hash_, settle=2)
     await take.wait_for("document.querySelectorAll('#rows .row').length > 0")
     await asyncio.sleep(1.2)
 
@@ -69,15 +79,26 @@ async def _open_dashboard(take, path: str) -> None:
 
 
 async def board(take, token: str):
-    """Five markets, every dimension, two of them green."""
+    """The whole answer, then the way in, then the detail.
+
+    The opening shot, and the only one that has to work for a viewer who has
+    been looking at this screen for four seconds. Counts first, because two
+    and three is the answer; then the panel a master goes into, because that
+    is the sentence the narration is on by then; then the matrix, then one
+    row of it.
+    """
     await _open_board(take)
     await take.hold(3.0)
     await take.focus(".counts", 1.4, pad=14)
     await take.hold(3.5)
-    await take.push(await take.rect_of("table.matrix", 8), 1.5)
+    await take.push(await take.rect_of("#build", 12), 1.6)
+    await take.hold(5.0)
+    await take.push(await take.rect_of("table.matrix", 8), 1.6)
+    await take.hold(5.0)
+    await take.focus('#rows .row[data-m="de-DE"]', 1.4, pad=10)
     await take.hold(4.5)
-    await take.focus('#rows .row[data-m="de-DE"]', 1.3, pad=10)
-    await take.hold(4.0)
+    await take.wide(1.5)
+    await take.hold(3.0)
 
 
 async def release(take, token: str):

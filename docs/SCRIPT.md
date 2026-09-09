@@ -18,6 +18,10 @@ Two rules held throughout:
 
 - **The first twenty seconds are the problem and what we built.** Nothing else.
   No features, no architecture, no numbers.
+- **Name the thing before describing it.** The first cut said "a crew of
+  agents that makes the whole thing" over a screen the viewer had had four
+  seconds to read. "The whole thing" had no referent yet and the project had
+  no name yet, so the one sentence carrying what was built said neither.
 - **Never say what the picture already says.** If the screen shows the roster,
   the narration says why compliance has no repair tool -- not "watch the
   roster". Narration that describes the visual is the thing that makes a demo
@@ -39,7 +43,8 @@ Numbers and units are spelled out because that is how they read correctly.
 > Any one of them can be wrong. All of them can be broken by a single change
 > upstream.
 >
-> So we built a crew of agents that makes the whole thing.
+> So we built Continuity: a global release system. One film goes in, and a
+> crew of agents prepares every market's release.
 >
 > And we gave them Grafana, to watch their own work.
 
