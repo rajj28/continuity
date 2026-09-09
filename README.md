@@ -38,7 +38,7 @@ repair failed and the plan is revised.
 
 **Models propose. Measurements dispose.**
 
-![The control room: five markets, eight dimensions, one pip per check](docs/img/control-room.png)
+![The control room: five markets, eight dimensions, one pip per check](docs/gallery/01-control-room.png)
 
 ---
 
@@ -77,7 +77,7 @@ receiver does not accept it at all. It is published deliberately; the operator
 token is not. An investigation costs model quota and changes no asset, which is
 why this one can be public.
 
-![A build running: the seven stages of the pipeline, streaming their own output](docs/img/build.png)
+![A build running: the seven stages of the pipeline, streaming their own output](docs/gallery/02-new-release.png)
 
 A build cannot be driven with that token. Starting one speaks every line of
 dialogue through a model and rewrites this title's assets, so it needs the
@@ -152,7 +152,7 @@ Not a report about the work — the work. Every market's outputs are playable in
 the control room: the scene as delivered, the dub, the described track, and the
 packaged deliverable with all of it muxed together.
 
-![The produced media, playable in the control room](docs/img/outputs.png)
+![The produced media, playable in the control room](docs/gallery/05-outputs.png)
 
 ### What an agent is allowed to do
 
@@ -161,13 +161,13 @@ land past, and is marked against that prediction afterwards. A strategy with no
 measured history in a market proposes and waits for a person; it earns the
 right to act alone after three verified successes.
 
-![A proposal awaiting a human: strategy, prediction, authority, cited evidence](docs/img/proposal.png)
+![A proposal awaiting a human: strategy, prediction, authority, cited evidence](docs/gallery/09-proposal.png)
 
 And the ledger keeps what happened, including the times it went wrong. The top
 line improved the loudness by four and a half decibels, missed the number it
 promised, and is recorded as a failure.
 
-![The repair ledger: succeeded, lucky and failed together](docs/img/ledger.png)
+![The repair ledger: succeeded, lucky and failed together](docs/gallery/10-ledger.png)
 
 ### The pipeline, end to end
 
@@ -217,7 +217,11 @@ python grafana/alerting.py --url <wake-url>/alert # point Grafana at it
 
 ## The loop
 
-![The loop: ingest, build, measure, judge, repair — and the return path](docs/img/architecture.png)
+![System diagram: two lanes, the read-only boundary, and the alert that starts the agents](docs/img/system-diagram.png)
+
+Two arrows carry the argument. The only one from the agents into Grafana
+passes through a box marked `--disable-write`, and the one that *starts*
+the agents comes out of Grafana rather than out of us.
 
 ## What each piece is doing there
 
@@ -263,6 +267,10 @@ reports "nothing was ever refused" — indistinguishable from a guardrail that
 has never fired, and the one thing this metric must never say untruthfully.
 
 ---
+
+More screenshots, at 3:2 with captions, in [`docs/gallery/`](docs/gallery/)
+— regenerate them from a running control room with
+`python scripts/gallery.py`.
 
 ## Honesty
 
