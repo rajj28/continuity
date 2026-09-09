@@ -112,6 +112,22 @@ of the product) · Sintel, © Blender Foundation, CC BY 3.0
 
 ![Continuity system diagram](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/system-diagram.png)
 
+> **Grafana Labs track — three claims, each checkable on its own:**
+>
+> 1. **Grafana computes the verdict.** `market_release_ready` is a Mimir
+>    recording rule with promtool unit tests. No code in this repository
+>    computes whether a market may ship.
+> 2. **The agents cannot write to it.** Their only interface to Grafana is
+>    `mcp-grafana` started with `--disable-write`, which registers zero
+>    create/update/delete tools. The guarantee is a process argument, not a
+>    prompt — nothing here can talk its own verdict green.
+> 3. **Grafana starts the work.** An alert on `market_release_ready < 1`
+>    POSTs to a Cloud Run receiver; the agents never poll. The receiver's own
+>    log is at **2:59** in the video, and live at
+>    [`/wakelog`](https://continuity-control-z6txmgck2a-el.a.run.app/wakelog).
+
+---
+
 **A film does not ship to the world once. It ships fifty times.**
 
 Germany needs a German dub, German subtitles, an FSK certificate, an audio
