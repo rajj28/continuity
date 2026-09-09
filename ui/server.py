@@ -876,7 +876,7 @@ class Handler(BaseHTTPRequestHandler):
         # disk: Chrome gives a file:// page an opaque origin and the first
         # casualties are the fonts and the layout that make them match
         # everything before them.
-        if path.strip("/") in ("endcard", "architecture", "wakelog"):
+        if path.strip("/") in ("endcard", "architecture", "wakelog", "diagram"):
             name = path.strip("/") + ".html"
             frame = Path(__file__).parent / name
             if not frame.exists():

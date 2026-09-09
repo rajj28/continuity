@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Continuity — architecture</title>
+<!--
+  The diagram for the submission page.
+
+  `architecture.html` is the frame that appears in the film and answers "what
+  is the shape". This one has a different job: it has to answer "who owns each
+  box, and where in the source is that service actually called" -- because the
+  rules require runtime use of Google Cloud and of the partner service, and a
+  reader should be able to check that without cloning anything.
+
+  So: the same five-stage band, plus a vendor badge on every box, plus the
+  module that makes the call underneath it.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0b0a; --panel: #131312; --raised: #1b1b19;
+    --line: #262623; --line-2: #35352f;
+    --ink: #f6f5f1; --ink-2: #a8a69c; --ink-3: #6b6960; --ink-4: #4a4842;
+    --good: #0ca30c; --good-ink: #67d167; --warn: #e0b558;
+    --gcp: #3987e5; --graf: #f46800;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .wrap { width: min(1810px, 96vw); }
+
+  header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 4px; }
+  h1 { margin: 0; font: 600 15px/1 var(--sans); letter-spacing: .22em;
+       text-transform: uppercase; color: var(--ink-3); }
+  h1 b { color: var(--ink); }
+  .key { margin-left: auto; display: flex; gap: 16px; }
+  .key span { font: 11px/1.9 var(--mono); color: var(--ink-3);
+              display: inline-flex; align-items: center; gap: 7px; }
+  .key i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .sub { margin: 0 0 22px; font: 15px/1.5 var(--sans); color: var(--ink-4); }
+
+  /* The ends of the pipeline, stated as data rather than as boxes: what goes
+     in is two files and what comes out is one, and both are worth naming. */
+  .ends { display: flex; gap: 14px; margin-bottom: 16px; }
+  .end { flex: 1; border: 1px dashed var(--line-2); border-radius: 8px;
+         padding: 11px 16px; display: flex; align-items: baseline; gap: 12px; }
+  .end .lab { font: 600 10px/1.9 var(--mono); letter-spacing: .16em;
+              text-transform: uppercase; color: var(--ink-4); white-space: nowrap; }
+  .end .val { font: 14px/1.5 var(--mono); color: var(--ink-2); }
+
+  .band { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0 15px; }
+  .step { position: relative; background: var(--panel);
+          border: 1px solid var(--line); border-top: 2px solid var(--slot);
+          border-radius: 8px; padding: 15px 16px 16px; }
+  .step:nth-child(1) { --slot: var(--gcp); }
+  .step:nth-child(2) { --slot: var(--gcp); }
+  .step:nth-child(3) { --slot: var(--good); }
+  .step:nth-child(4) { --slot: var(--graf); }
+  .step:nth-child(5) { --slot: var(--gcp); }
+  .step + .step::before {
+    content: "\203A"; position: absolute; left: -17px; top: 46%;
+    transform: translateY(-50%); color: var(--ink-4); font: 27px/1 var(--mono);
+  }
+  .top { display: flex; align-items: center; gap: 9px; }
+  .n { font: 600 11px/1 var(--mono); color: var(--slot); letter-spacing: .18em; }
+  .badge { margin-left: auto; font: 600 9px/1.8 var(--mono);
+           letter-spacing: .1em; text-transform: uppercase; padding: 0 7px;
+           border-radius: 3px; white-space: nowrap; }
+  .badge.g  { color: var(--gcp);  box-shadow: inset 0 0 0 1px rgba(57,135,229,.45); }
+  .badge.gr { color: var(--graf); box-shadow: inset 0 0 0 1px rgba(244,104,0,.5); }
+  .badge.o  { color: var(--good-ink); box-shadow: inset 0 0 0 1px rgba(12,163,12,.4); }
+  .step h2 { margin: 10px 0 7px; font: 600 20px/1.2 var(--sans); }
+  .step p { margin: 0 0 12px; font: 13.5px/1.55 var(--sans); color: var(--ink-2); }
+  .step ul { margin: 0; padding: 12px 0 0; list-style: none;
+             border-top: 1px solid var(--line); }
+  .step li { font: 12.5px/1.8 var(--mono); color: var(--ink-3); }
+  .step li b { color: var(--ink-2); font-weight: 500; }
+  .step .src { margin-top: 10px; font: 11.5px/1.7 var(--mono); color: var(--ink-4); }
+  .step .src b { color: var(--warn); font-weight: 400; }
+
+  /* The two arrows that are not simply "next": the webhook that starts the
+     agents, and the return path that makes everything downstream stale. */
+  .arrows { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0 15px;
+            margin-top: 14px; }
+  .call { grid-column: 4 / span 2; border: 1px solid rgba(244,104,0,.35);
+          background: rgba(244,104,0,.05); border-radius: 8px;
+          padding: 11px 16px; }
+  .call .lab { font: 600 10px/1.9 var(--mono); letter-spacing: .14em;
+               text-transform: uppercase; color: var(--graf); }
+  .call p { margin: 2px 0 0; font: 13.5px/1.5 var(--sans); color: var(--ink-2); }
+  .back { grid-column: 1 / span 3; border: 1px dashed var(--line-2);
+          border-radius: 8px; padding: 11px 16px; }
+  .back .lab { font: 600 10px/1.9 var(--mono); letter-spacing: .14em;
+               text-transform: uppercase; color: var(--warn); }
+  .back p { margin: 2px 0 0; font: 13.5px/1.5 var(--sans); color: var(--ink-3); }
+
+  .feet { margin-top: 18px; display: flex; gap: 30px; flex-wrap: wrap;
+          border-top: 1px solid var(--line); padding-top: 14px; }
+  .feet div { font: 12.5px/1.6 var(--mono); color: var(--ink-4); }
+  .feet b { color: var(--ink-2); font-weight: 500; }
+  .feet em { font-style: normal; color: var(--good-ink); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Continuity · <b>global release autopilot</b></h1>
+      <div class="key">
+        <span><i style="background:#3987e5"></i> Google Cloud</span>
+        <span><i style="background:#f46800"></i> Grafana Cloud</span>
+        <span><i style="background:#0ca30c"></i> deterministic — ffmpeg</span>
+      </div>
+    </header>
+    <p class="sub">A master goes in at the left. Nothing leaves the right until
+      Grafana says it can — and Grafana is what wakes the agents when it says
+      it cannot.</p>
+
+    <div class="ends">
+      <div class="end"><span class="lab">In</span>
+        <span class="val">master.mp4 &nbsp;+&nbsp; dialogue.srt &nbsp;+&nbsp; the markets you want</span></div>
+      <div class="end"><span class="lab">Out</span>
+        <span class="val">per market: picture + dub + described track + subtitles, one file, every ingredient hashed</span></div>
+    </div>
+
+    <div class="band">
+      <div class="step">
+        <div class="top"><span class="n">01</span>
+          <span class="badge g">Cloud Run</span></div>
+        <h2>Ingest</h2>
+        <p>Master and dialogue list cut into scenes on the gaps between lines,
+          each asset recording its parents' hashes.</p>
+        <ul>
+          <li><b>ffmpeg</b> · content-addressed store</li>
+          <li>staleness = parent hash moved</li>
+        </ul>
+        <div class="src">scripts/stage1.py · <b>media/store.py</b></div>
+      </div>
+
+      <div class="step">
+        <div class="top"><span class="n">02</span>
+          <span class="badge g">Vertex AI</span></div>
+        <h2>Build</h2>
+        <p>Per market: adapt every line to the gap it must land in, speak it,
+          write the subtitles, describe the picture, assemble the package.</p>
+        <ul>
+          <li><b>Gemini 2.5 Flash</b> — adaptation</li>
+          <li><b>Gemini TTS</b> — dub + description</li>
+        </ul>
+        <div class="src">stage2–6 · <b>media/model.py</b></div>
+      </div>
+
+      <div class="step">
+        <div class="top"><span class="n">03</span>
+          <span class="badge o">no model here</span></div>
+        <h2>Measure</h2>
+        <p>87 checks in 8 dimensions. Every number that can block a release is
+          read off a file — never produced by a model.</p>
+        <ul>
+          <li><b>ffmpeg / ffprobe</b> probes</li>
+          <li>OTel GenAI semconv → remote write</li>
+        </ul>
+        <div class="src">media/qc/ · <b>telemetry/exporters/</b></div>
+      </div>
+
+      <div class="step">
+        <div class="top"><span class="n">04</span>
+          <span class="badge gr">Mimir</span></div>
+        <h2>Judge</h2>
+        <p><code>market_release_ready</code> — everything measured passed,
+          everything owed was measured, nothing built on a stale parent.</p>
+        <ul>
+          <li><b>a recording rule</b>, not our code</li>
+          <li>thresholds published as metrics</li>
+        </ul>
+        <div class="src">grafana/rules/ · <b>promtool tested</b></div>
+      </div>
+
+      <div class="step">
+        <div class="top"><span class="n">05</span>
+          <span class="badge g">ADK</span></div>
+        <h2>Repair</h2>
+        <p>One specialist per failing dimension, in parallel. Each predicts its
+          own result and is marked against it, not on whether it got away.</p>
+        <ul>
+          <li><b>mcp-grafana --disable-write</b></li>
+          <li>authority earned over 3 verified wins</li>
+        </ul>
+        <div class="src">agents/swarm.py · <b>agents/contracts.py</b></div>
+      </div>
+    </div>
+
+    <div class="arrows">
+      <div class="back"><span class="lab">↩ back to 02 — lineage is the scheduler</span>
+        <p>A repair gives the asset a new hash, so everything built from the old
+          one is stale until rebuilt, and the market stays blocked while it is.
+          The order repairs are applied in is read out of the asset graph.</p></div>
+      <div class="call"><span class="lab">Grafana calls the agents →</span>
+        <p>An alert on <code>market_release_ready &lt; 1</code> POSTs to a second
+          Cloud Run service. The agents never poll, and their only door back
+          into Grafana registers zero write tools.</p></div>
+    </div>
+
+    <div class="feet">
+      <div><b>Cloud Run</b> — two services, one image, one digest: an
+        alert-driven repair and an operator-approved one are provably the same code</div>
+      <div><b>Cloud Build · Artifact Registry</b> — digest-pinned deploys</div>
+      <div><b>Read-only by construction</b> — nothing here can
+        <em>talk itself green</em></div>
+    </div>
+  </div>
+</body>
+</html>
