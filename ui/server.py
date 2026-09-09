@@ -436,6 +436,19 @@ class State:
                    ".mp4": "video/mp4", ".m4a": "audio/mp4",
                    ".srt": "text/plain; charset=utf-8"}
 
+    @staticmethod
+    def _file(uri: str) -> Path:
+        """An asset's uri as a path that resolves wherever this is running.
+
+        The store was written on Windows, so the uris in it carry backslashes.
+        On Linux `Path("out\dub\de-DE\stem.wav")` is not three
+        directories and a file -- it is one filename with backslashes in it,
+        which exists nowhere. The deployed control room listed no outputs at
+        all for exactly this reason while every byte was present in the image.
+        """
+        path = Path(uri.replace("\\", "/"))
+        return path if path.is_absolute() else ROOT / path
+
     def outputs(self, market: str, scene: str = "S03") -> list[dict[str, Any]]:
         """The media this market's agents actually produced.
 
@@ -452,9 +465,7 @@ class State:
                 # Scene audio and picture belong to the title, not a market.
                 if asset.market not in (market, None, ""):
                     continue
-                path = Path(asset.uri)
-                if not path.is_absolute():
-                    path = ROOT / path
+                path = self._file(asset.uri)
                 if not path.exists():
                     continue
                 out.append({
@@ -479,9 +490,7 @@ class State:
             asset = self.store.load(asset_id)
         except (OSError, ValueError, KeyError):
             return None
-        path = Path(asset.uri)
-        if not path.is_absolute():
-            path = ROOT / path
+        path = self._file(asset.uri)
         try:
             path = path.resolve(strict=True)
             path.relative_to(ROOT.resolve())
