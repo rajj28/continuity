@@ -202,3 +202,52 @@ up.
 - **Don't show the operator token on screen.** Sign in before you record.
 - Watch it once at full size before uploading. Then upload to YouTube as
   **Public** or **Unlisted** — not Private, or the judges cannot open it.
+
+## The shot list as it stands
+
+Thirteen blocks of narration, seventeen shots, 5:30. Regenerate the whole film
+with:
+
+```bash
+python scripts/wakelog.py        # the receiver's log, read from Cloud Logging
+python scripts/voice.py          # narration; existing takes are kept
+python scripts/listen.py         # the block whose soundtrack is the product
+python scripts/record.py --clip all
+python scripts/assemble.py
+```
+
+| Block | Shots | What it has to establish |
+|---|---|---|
+| vo1 | board | A film ships fifty times; this is Continuity; the checking costs more than the making |
+| vo2 | release, lineage, outputs | A master goes in and the seven stages run |
+| vo2b | listen | The dub, heard rather than described |
+| vo2c | dimensions | Not a dubbing tool — eight columns, named one at a time |
+| vo3 | verdict, grafana_dash, grafana_verdict | Grafana decides, and nothing can talk it green |
+| vo4 | coverage, grafana_rule | A check nobody ran blocks as hard as one that failed |
+| vo4b | wakelog | The receiver answering, in its own log |
+| vo5 | swarm | One specialist per failing dimension, in parallel |
+| vo5c | repair_ask, repair_done | A prediction, an approval, and a failure recorded |
+| vo5b | compliance | The dimensions nothing here can repair |
+| vo6 | repairs, autonomy, grafana_agent | Lucky counts against; authority is earned |
+| vo6b | architecture | The wiring, after every part of it has been seen working |
+| vo7 | close, endcard | Where it goes next, and where to find it |
+
+### Things that cost a re-shoot, so they are written down
+
+- **The sticky header covers a scrolled-to heading.** `scrollIntoView` puts an
+  element at the top of the viewport and the 56px header sits on top of it.
+  Every shot that scrolls to a heading follows it with `scrollBy(0, -72)`.
+- **The detail pane is a skeleton for forty seconds** when the control room
+  runs locally — one round trip per figure to Grafana Cloud, which is fast from
+  Cloud Run in the same region and is not fast from a laptop in India. Any shot
+  framing something *below* the detail pane has to wait for `#measured` first,
+  or it measures the page at the wrong height.
+- **A group is trimmed from its end.** Clips are cut long on purpose, so the
+  last shot in a block is the one that loses seconds. Put nothing there that
+  the film cannot afford to lose — the end card was silently cut off entirely
+  the first time it was added behind two other shots.
+- **`play()` in the same tick as a `currentTime` that has not resolved does
+  nothing, silently.** The third transport in the listen block seeked and
+  stopped. Nudge it again half a second later.
+- **Class names collide.** `.mk` already meant a 9px status square, so reusing
+  it on the build rail painted a green block over every market name.

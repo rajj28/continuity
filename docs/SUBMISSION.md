@@ -59,6 +59,49 @@ picture, the dubbed audio, the audio description as a selectable track with the
 accessibility flag set, and language-tagged subtitles — plus a manifest naming
 every ingredient by hash.
 
+**You give it a video and a list of what is said in it.** Drop a master and its
+dialogue list on the control room, choose your markets, and seven stages run —
+ingest, dub, subtitles, audio description, storefront record, release check,
+package — streaming their own output as they go. They are the same scripts the
+README documents, started as processes, not reimplemented to make a screen
+move.
+
+**And you can play what came out.** The control room serves every produced file
+by asset id out of the content-addressed store: the scene as delivered, the
+dub, the described track, and the packaged deliverable. A dub you cannot hear
+is indistinguishable from one that was never made.
+
+## It is not a dubbing tool
+
+Eighty-seven checks, in eight dimensions, per title:
+
+| | |
+|---|---|
+| **Localisation** | dub sync against picture, lines overrunning their slots, delivery pace, meaning preserved |
+| **Audio** | integrated loudness against the territory's own target, true-peak ceiling |
+| **Timed text** | subtitle reading rate |
+| **Accessibility** | description colliding with dialogue, description coverage |
+| **Technical** | resolution, frame rate, video codec, pixel format, channel configuration, sample rate |
+| **Rights** | territory grants and windows |
+| **Certification** | ratings body, state, and whether the certificate was granted against *this* cut |
+| **Packaging** | required deliverables complete, storefront record localised, forced narratives present |
+
+Those are the ones it runs. The shape extends to the rest of what a real
+delivery is checked against — scan type and active picture, colour primaries
+and HDR metadata, photosensitive-epilepsy compliance, channel mapping and M&E
+stems, subtitle line length and cue gaps, SDH and CEA-608/708 captions, music
+cue sync and stock footage rights, holdbacks and format rights, content
+descriptors and certificate expiry, artwork variants carrying localised text,
+IMF conformance and per-platform delivery manifests, and territory-specific
+edits. Each of them is a threshold published as a metric and a probe that
+reads a file; none of them changes the architecture.
+
+The dimensions that cannot be repaired say so, and say why. Japan fails on a
+right that was never granted, a right whose window does not open until the
+15th, and a certificate nobody has submitted. Germany's certificate is granted,
+in date, and against this exact cut — re-cut the film and it stops counting, by
+hash. No agent here is given a tool that could pretend otherwise.
+
 ## How Grafana is used
 
 Not as a dashboard. As the control loop.
@@ -101,6 +144,15 @@ repair carries a falsifiable prediction — which series, which direction, past
 which value. Afterwards the outcome is recorded `succeeded`, `lucky` (it passed
 but the prediction did not hold) or `failed`. `lucky` raises the denominator
 and not the numerator, so a strategy cannot earn autonomy by coincidence.
+
+The demo video shows one of these being approved and going wrong. The audio
+specialist proposed a REMIX on pt-BR, predicting
+`audio_loudness_lufs: -18.78 -> <= -24`. It ran on the real audio and landed at
+**-23.32** — four and a half decibels better than it started, and short of what
+it promised. The ledger records it as **failed**. In the same investigation the
+localisation specialist declined to touch the sync failure at all, because
+`dub_drift_systematic = 0` meant a retime would not fix it; it escalated
+instead of trying. Neither of those is a scripted outcome.
 
 **Authority is the tool list, not the prompt.** The compliance specialist
 cannot propose a repair — not because it is instructed not to, but because
@@ -158,6 +210,22 @@ changing.
 
 ## What's next
 
+**A series ships fifty times an episode, every week.** The gate is per episode,
+but the interesting problem is across them — a glossary and a character's voice
+have to hold for a season, and when a shared asset changes, everything built
+from it is stale. That is already the model: an asset records its parents'
+hashes and is stale when they stop matching. Extending it from scenes to
+episodes is data, not architecture.
+
+**A live event ships while it is still going out.** The same gate inside a
+latency budget rather than before publication — loudness, caption reading rate
+and caption latency on a rolling window, the verdict as a live recording rule,
+and the repair as a mixer action rather than a re-render. Grafana is more
+natural there, not less.
+
+The same shape covers theatrical DCP conformance and ad campaigns, where the
+asset count is higher and the dimensions are identical.
+
 Pub/Sub is enabled but not yet in the path — the dispatcher is in-process, with
 real dedup semantics but not durable ones. Meaning-preservation is deliberately
 unjudged: the only machine version is a model scoring its own back-translation,
@@ -172,5 +240,10 @@ the README, and press **Investigate now**. One specialist wakes per failing
 dimension; every tool call streams as it happens. The token runs investigations
 and cannot approve a repair.
 
+Scroll a market's detail for **What the agents made** and press play on the
+dub, then the described track, then the packaged deliverable. Below it,
+**Compliance** names who has to say yes and whether they have.
+
 Two of five markets currently ship. The other three tell you exactly what they
-are waiting for.
+are waiting for — and one of them is waiting on a regulator, which nothing in
+this repository can do anything about.
