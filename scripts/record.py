@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import io
 import json
 import shutil
 import subprocess
@@ -63,6 +64,7 @@ class Take:
         self.n = 0
         self._chrome: subprocess.Popen | None = None
         self._scratch: Path | None = None
+        self.view = (0.0, 0.0, float(width), float(height))
         self._ws = None
         self._id = 0
 
@@ -104,8 +106,14 @@ class Take:
         self._ws = await websockets.connect(target, max_size=64 * 1024 * 1024)
         await self.cdp("Page.enable")
         await self.cdp("Runtime.enable")
+        # Rendered at twice the output resolution. A zoom is then a CROP of
+        # real pixels rather than an upscale of soft ones -- half a 3840-wide
+        # frame is exactly 1920 wide and perfectly sharp, where enlarging half
+        # a 1920-wide frame is a blur. Wide shots get the same frames
+        # downsampled, which is free supersampling.
         await self.cdp("Emulation.setDeviceMetricsOverride", width=self.width,
-                       height=self.height, deviceScaleFactor=1, mobile=False)
+                       height=self.height, deviceScaleFactor=2, mobile=False)
+        self.view = (0.0, 0.0, float(self.width), float(self.height))
         return self
 
     async def __aexit__(self, *_exc) -> None:
@@ -187,11 +195,79 @@ class Take:
     # -- capture -----------------------------------------------------------
 
     async def _frame(self) -> None:
+        from PIL import Image
+
         shot = await self.cdp("Page.captureScreenshot", format="png",
                               captureBeyondViewport=False)
-        (self.frames / f"{self.n:05d}.png").write_bytes(
-            base64.b64decode(shot["data"]))
+        raw = Image.open(io.BytesIO(base64.b64decode(shot["data"])))
+        x, y, w, h = self.view
+        # The view is in CSS pixels; the frame is at 2x.
+        box = (round(x * 2), round(y * 2), round((x + w) * 2), round((y + h) * 2))
+        frame = raw.crop(box)
+        if frame.size != (self.width, self.height):
+            frame = frame.resize((self.width, self.height), Image.LANCZOS)
+        frame.convert("RGB").save(self.frames / f"{self.n:05d}.png")
         self.n += 1
+
+    # -- framing -----------------------------------------------------------
+
+    async def rect_of(self, selector: str, pad: float = 24.0):
+        """A 16:9 view containing an element, in CSS pixels.
+
+        Padded, because a crop that touches the edges of the thing it is
+        showing reads as an accident rather than a choice.
+        """
+        box = await self.js(
+            "(() => {const e = document.querySelector(%r);"
+            " if (!e) return null; const r = e.getBoundingClientRect();"
+            " return [r.x, r.y, r.width, r.height];})()" % selector)
+        if not box:
+            raise RuntimeError(f"nothing matches {selector!r} to focus on")
+        x, y, w, h = box
+        return self._fit(x - pad, y - pad, w + pad * 2, h + pad * 2)
+
+    def _fit(self, x: float, y: float, w: float, h: float):
+        """Grow a box to 16:9 and clamp it inside the viewport."""
+        aspect = self.width / self.height
+        if w / h < aspect:
+            grown = h * aspect
+            x -= (grown - w) / 2
+            w = grown
+        else:
+            grown = w / aspect
+            y -= (grown - h) / 2
+            h = grown
+        # Never larger than the viewport, and never hanging off an edge --
+        # either would crop in blank space and look like a mistake.
+        if w > self.width:
+            w, h = float(self.width), float(self.height)
+        x = min(max(0.0, x), self.width - w)
+        y = min(max(0.0, y), self.height - h)
+        return (x, y, w, h)
+
+    async def push(self, view, seconds: float) -> None:
+        """Move the frame from where it is to `view`, capturing as it goes.
+
+        Eased, so the move settles rather than stopping dead. A dense screen
+        shown whole is a screenshot of a dashboard; the same screen pushed
+        into the one panel being talked about is an explanation.
+        """
+        import math
+
+        start = self.view
+        steps = max(1, round(seconds * self.fps))
+        for i in range(1, steps + 1):
+            t = (1 - math.cos(math.pi * (i / steps))) / 2
+            self.view = tuple(a + (b - a) * t for a, b in zip(start, view))
+            await self._frame()
+
+    async def focus(self, selector: str, seconds: float = 1.2,
+                    pad: float = 24.0) -> None:
+        await self.push(await self.rect_of(selector, pad), seconds)
+
+    async def wide(self, seconds: float = 1.2) -> None:
+        await self.push((0.0, 0.0, float(self.width), float(self.height)),
+                        seconds)
 
     async def hold(self, seconds: float) -> None:
         """Sit still and let the viewer read. Also what covers a narration
@@ -272,33 +348,44 @@ CONTROL = "https://continuity-control-z6txmgck2a-el.a.run.app"
 
 
 async def clip_test(out: Path, token: str) -> Path:
-    """The proof-of-quality clip: the board, the verdict, a live investigation."""
+    """The proof-of-quality clip: the board, the verdict, a live investigation.
+
+    Framed rather than merely captured. A 1080p frame of this control room
+    holds far more than a viewer can read in the seconds they get, so the
+    camera pushes into whatever the narration is about and pulls back out
+    between beats. Shown whole it is a screenshot of a dashboard; shown one
+    panel at a time it is an argument.
+    """
     async with Take("test", out, fps=12) as take:
         await take.goto(CONTROL, settle=2)
-        # The board arrives over HTTP; wait for it rather than guessing.
         await take.wait_for("document.querySelectorAll('#rows .row').length > 0")
-        # The token has to be in place before Investigate is pressed. Set here
-        # rather than typed on camera -- filming a credential being entered is
-        # both slow and a bad habit to record.
         await take.js(f"sessionStorage.setItem('op', {token!r})")
         await asyncio.sleep(1.5)
 
-        await take.hold(2.0)                       # the board, at rest
-        await take.glide(560, 3.5)                 # down through the matrix
+        # Establish, then go and read the counts.
         await take.hold(1.5)
-        await take.glide(0, 2.0)                   # back to the top
+        await take.focus(".counts", 1.4, pad=18)
+        await take.hold(1.8)
 
-        # Open a blocked market. Clicked through the DOM rather than by
-        # coordinates so it cannot drift when the layout changes.
+        # The matrix, and then one market's row within it.
+        await take.push(await take.rect_of("table.matrix", 10), 1.4)
+        await take.hold(2.2)
+        await take.focus('#rows .row[data-m="de-DE"]', 1.2, pad=14)
+        await take.hold(2.0)
+
+        # The verdict, which is the claim the whole project rests on.
         await take.js(
             "document.querySelector('#rows .row[data-m=\"ja-JP\"]').click()")
         await take.wait_for("!!document.getElementById('investigate')")
-        await take.hold(2.5)                       # the verdict panel
+        await take.wide(1.0)
+        await take.focus("#detail .pad", 1.4, pad=16)
+        await take.hold(3.0)
 
+        # The swarm. Pulled back to the trace panel and held there, at the
+        # pace the agents actually work -- the elapsed time is the evidence.
         await take.js("document.getElementById('investigate').click()")
-        # Long enough for the specialists to reach a conclusion, which is the
-        # whole point of the shot. They take about forty seconds.
-        await take.watch(46.0)
+        await take.push(await take.rect_of("#trace", 12), 1.2)
+        await take.watch(44.0)
         await take.hold(1.5)
         return take.assemble()
 
