@@ -26,6 +26,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTROL = "https://continuity-control-z6txmgck2a-el.a.run.app"
+# The build shot, and only the build shot, is taken against a local instance.
+# Not because the deployed one cannot run a build -- it is the same image and
+# the same code -- but because it has nothing to build FROM: a feature master
+# is a quarter of a gigabyte, a container is the wrong place for a film, and
+# Cloud Run will not accept a request body that size either. Same service, same
+# screen, on the machine that has the film on it.
+LOCAL = "http://127.0.0.1:8090"
 GRAFANA = "https://cordialharbor49.grafana.net"
 # MarketNotReleaseReady -- the rule that wakes the agents.
 ALERT_UID = "cfxmy5p8nqtq8d"
@@ -73,6 +80,54 @@ async def board(take, token: str):
     await take.hold(4.0)
 
 
+async def release(take, token: str):
+    """A master goes in and the pipeline runs, at the pace it actually runs.
+
+    Nothing here is dressed. The rail is the seven stages of the README, the
+    lines underneath are what those scripts print, and the seconds against
+    each stage are how long it took. `watch` records in real time rather than
+    holding a still, because the elapsed time is part of the claim: this is a
+    build, not a transition.
+    """
+    await take.goto(LOCAL, settle=2)
+    await take.js("sessionStorage.setItem('op', %r)" % token)
+    await take.goto(LOCAL, settle=2)
+    await take.wait_for(
+        "document.querySelectorAll('#pick-markets input').length > 0")
+    await take.js(
+        "(() => { for (const i of document.querySelectorAll('#pick-markets input'))"
+        "  i.checked = (i.value === 'pt-BR');"
+        "  document.getElementById('pick-markets').onchange(); })()")
+    await take.push(await take.rect_of("#build", 14), 1.2)
+    await take.hold(2.5)
+    await take.js("document.getElementById('build-go').click()")
+    # Nine seconds of a build that takes minutes. Cut for the film rather than
+    # sped up: the stage timings on the rail are the real ones, and a shot
+    # that ran the clock faster than the pipeline would be the one dishonest
+    # frame in the whole thing.
+    await take.watch(9.0)
+    await take.hold(1.5)
+
+
+async def outputs(take, token: str):
+    """The files themselves, with transports under them.
+
+    Everything else on this screen is a representation of the work -- a pip, a
+    number, a hash. This is the work. A dub you cannot hear is indistinguish-
+    able from one that was never made, and the whole project is an argument
+    against being asked to take that on trust.
+    """
+    await take.goto(CONTROL + "/#de-DE", settle=2)
+    await take.wait_for("!!document.getElementById('investigate')")
+    await take.js(
+        "(() => { const h = [...document.querySelectorAll('#detail h2')]"
+        "  .find(e => e.textContent.includes('agents made'));"
+        "  if (h) h.scrollIntoView({block: 'start'}); })()")
+    await asyncio.sleep(1.0)
+    await take.push(await take.rect_of_all("#detail .out-row", 22), 1.3)
+    await take.hold(10.5)
+
+
 async def verdict(take, token: str):
     """The three factors that multiply into the verdict, and their PromQL."""
     await take.goto(CONTROL + "/#de-DE", settle=2)
@@ -114,14 +169,11 @@ async def lineage(take, token: str):
         "  if (h) h.scrollIntoView({block: 'center'}); })()")
     await asyncio.sleep(1.0)
     await take.push(await take.rect_of_all("#detail .asset", 26), 1.3)
-    await take.hold(9.0)
-    await take.js(
-        "(() => { const h = [...document.querySelectorAll('#detail h2')]"
-        "  .find(e => e.textContent.includes('Blast radius'));"
-        "  if (h) h.scrollIntoView({block: 'center'}); })()")
-    await asyncio.sleep(1.0)
-    await take.push(await take.rect_of_all("#detail .blast", 26), 1.2)
-    await take.hold(6.0)
+    # Shorter than it was. The blast radius used to follow here and is the
+    # better idea, but this block of narration now has to carry the build as
+    # well and something had to give. It is on the screen for anyone who
+    # opens the control room; the film cannot hold everything.
+    await take.hold(8.5)
 
 
 async def swarm(take, token: str):
@@ -252,6 +304,8 @@ async def grafana_dash(take, token: str):
 
 SHOTS = {
     "board": (board, None),
+    "release": (release, None),
+    "outputs": (outputs, None),
     "verdict": (verdict, None),
     "coverage": (coverage, None),
     "lineage": (lineage, None),
@@ -273,8 +327,8 @@ SHOTS = {
 # marked, and where it ends up.
 BLOCKS = {
     "vo1": ["board"],
-    "vo2": ["lineage", "verdict"],
-    "vo3": ["grafana_dash", "grafana_verdict"],
+    "vo2": ["release", "lineage", "outputs"],
+    "vo3": ["verdict", "grafana_dash", "grafana_verdict"],
     "vo4": ["coverage", "grafana_rule"],
     "vo5": ["swarm"],
     "vo6": ["repairs", "autonomy", "grafana_agent"],
@@ -283,3 +337,11 @@ BLOCKS = {
 
 ORDER = [name for block in BLOCKS.values() for name in block
          if name in SHOTS]
+
+# Shots that cannot be driven with the published demo token. An investigation
+# costs model quota and changes no asset, which is why the demo token can run
+# one; a build rewrites this title's assets, which is why it cannot. The
+# recorder reads the operator token for these and only these. Neither token is
+# ever on screen -- both are set into sessionStorage, and the header shows the
+# word "signed in" rather than the string.
+NEEDS_OPERATOR = frozenset({"release"})

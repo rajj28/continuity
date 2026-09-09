@@ -313,6 +313,9 @@
   .drop b { color: var(--ink-2); font-weight: 600; }
   .drop .browse { color: #8ab8f2; text-decoration: underline;
                   text-underline-offset: 2px; cursor: pointer; }
+  .drop .only-empty { display: none; }
+  .drop[data-empty="1"] .only-empty { display: block; margin: 8px auto 0;
+    max-width: 62ch; color: var(--ink-4); font-size: 11px; line-height: 1.6; }
   .picks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px;
            margin-top: 13px; }
   .picks label { display: block; font: 600 9px/1.6 var(--sans);
@@ -469,6 +472,10 @@
           <b>Drop a master and its dialogue list here</b>
           — or <span class="browse" id="browse" role="button" tabindex="0">choose
           files</span>. Video plus the .srt of what is said in it.
+          <span class="only-empty">A full-length master is a quarter of a
+            gigabyte and is not shipped inside the container image, so this
+            deployment starts with nothing to build from. Run the control room
+            locally and it offers the one in the repository.</span>
           <input id="files" type="file" multiple hidden
                  accept="video/mp4,video/quicktime,video/x-matroska,.srt">
         </div>
@@ -1068,14 +1075,20 @@ function gateBuild() {
   note.textContent =
     building ? "Building — the stages are running now."
     : !token() ? "Sign in as operator to build: every line is spoken through a model."
+    : !sources || !sources.masters.length ? "Nothing to build from yet — add a master."
+    : !sources.dialogues.length ? "A dialogue list (.srt) is needed."
     : !chosen.length ? "Choose at least one market."
-    : !sources || !sources.dialogues.length ? "A dialogue list (.srt) is needed."
     : chosen.length + (chosen.length === 1 ? " market" : " markets")
       + " · seven stages each run for real.";
 }
 
 async function loadSources(select) {
   sources = await (await fetch("/api/sources")).json();
+  // Hosted, the picker is empty and that is not a fault. A feature master is
+  // a quarter of a gigabyte and does not belong in a container image, so the
+  // deployed service has nothing shipped to build from -- it says so, rather
+  // than offering an empty menu and failing on the press.
+  $("drop").dataset.empty = sources.masters.length ? "0" : "1";
   for (const [id, list] of [["pick-master", sources.masters],
                             ["pick-dialogue", sources.dialogues]]) {
     const el = $(id), had = el.value;

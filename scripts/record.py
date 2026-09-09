@@ -365,7 +365,7 @@ class Take:
 # Clips
 # ---------------------------------------------------------------------------
 
-from scripts.clips import ORDER, SHOTS
+from scripts.clips import NEEDS_OPERATOR, ORDER, SHOTS
 
 
 async def shoot(name: str, out: Path, token: str, fps: int = 12) -> Path:
@@ -384,7 +384,9 @@ def main() -> int:
     args = ap.parse_args()
 
     from telemetry.otel import load_env
-    token = load_env().get("DEMO_TOKEN", "")
+    env = load_env()
+    token = env.get("DEMO_TOKEN", "")
+    operator = env.get("WAKE_TOKEN", "")
     if not token:
         print("no DEMO_TOKEN in .env.local", file=sys.stderr)
         return 1
@@ -393,7 +395,11 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     names = ORDER if args.clip == "all" else [args.clip]
     for name in names:
-        path = asyncio.run(shoot(name, out, token))
+        needed = operator if name in NEEDS_OPERATOR else token
+        if not needed:
+            print(f"  {name:<15} skipped: no operator token", file=sys.stderr)
+            continue
+        path = asyncio.run(shoot(name, out, needed))
         duration = subprocess.run([
             shutil.which("ffprobe") or "ffprobe", "-v", "error",
             "-show_entries", "format=duration", "-of", "csv=p=0", str(path),

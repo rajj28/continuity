@@ -67,6 +67,15 @@ COPY out/store/ out/store/
 COPY out/scenes/S03.mp4 out/scenes/
 COPY out/scenes/manifest.json out/scenes/
 
+# What the agents made. About 30 MB of dubs, described tracks, subtitles and
+# packaged deliverables, so the deployed control room can play them rather than
+# list four files it cannot open. Everything else on that screen is a
+# representation of the work -- a pip, a number, a hash; this is the work.
+COPY out/dub/ out/dub/
+COPY out/ad/ out/ad/
+COPY out/subs/ out/subs/
+COPY out/deliverables/ out/deliverables/
+
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1 \

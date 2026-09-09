@@ -530,12 +530,25 @@ class State:
         control room reads and investigates and cannot repair. Better to say
         that than to fail with a stack trace at the moment someone clicks.
 
-        Asks whether the directory has anything IN it, not whether it exists:
-        `Store.__init__` creates `objects/` unconditionally, so the hosted
-        service reported it could repair while holding not one byte of audio.
+        Asked against the index rather than as "is anything there". It began
+        as the second, because `Store.__init__` creates `objects/`
+        unconditionally and the hosted service reported it could repair while
+        holding not one byte of audio. Then the image started shipping ONE
+        object -- the scene's own audio, so the control room can play the
+        original next to the dub -- and "not empty" began answering yes to a
+        store holding one file out of thirty-six.
+
+        So: every hash the index names has to be on disk. Not most of them.
+        A repair reads its target's parents, and a store missing any of them
+        fails at a different moment depending on which one, which is worse
+        than not offering the button.
         """
         objects = STORE / "objects"
-        return objects.is_dir() and any(objects.iterdir())
+        if not objects.is_dir():
+            return False
+        present = {path.stem for path in objects.rglob("*") if path.is_file()}
+        named = {asset.sha256 for asset in self.store.all_assets()}
+        return bool(named) and named <= present
 
     def approve(self, market: str) -> dict[str, Any]:
         """Carry out the pending proposal by running the same command an

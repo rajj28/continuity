@@ -75,6 +75,11 @@ receiver does not accept it at all. It is published deliberately; the operator
 token is not. An investigation costs model quota and changes no asset, which is
 why this one can be public.
 
+A build cannot be driven with that token. Starting one speaks every line of
+dialogue through a model and rewrites this title's assets, so it needs the
+operator token — but the seven stages it runs are in the repository and the
+same seven run locally against your own file.
+
 `docs/DEMO.md` is the three-minute walkthrough.
 
 ---
@@ -138,6 +143,10 @@ python -m pytest -q                    # 310 passing
 ```
 
 ### The pipeline, end to end
+
+The control room runs exactly this sequence when a master is dropped on it —
+by starting these scripts, not by reimplementing them. What you see streamed
+on the screen is their own output.
 
 ```bash
 python scripts/stage1.py                          # master -> scenes, content-addressed

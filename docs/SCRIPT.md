@@ -43,17 +43,21 @@ Numbers and units are spelled out because that is how they read correctly.
 >
 > And we gave them Grafana, to watch their own work.
 
-## VO 2 — what the agents make (over: lineage, verdict measurements)
+## VO 2 — what the agents make (over: release, outputs, lineage)
 
-> It starts with a video and a list of the dialogue.
+> It starts with a video and a list of what is said in it.
+>
+> Drop those in, pick the markets, and the crew goes to work.
 >
 > Gemini rewrites every line to fit the gap it has to land in, and speaks it.
 > The subtitles come from those same lines. Another agent watches the picture
 > and describes it for people who cannot see it. Another writes the storefront
 > copy.
 >
-> Then it is all assembled into the file a platform actually receives. Picture,
-> dubbed audio, a described track, subtitles. One deliverable, per market.
+> Then it is assembled into the file a platform actually receives. Picture,
+> dubbed audio, a described track, subtitles.
+>
+> This is not a report about the work. It is the work — you can play it.
 
 ## VO 3 — measured, and judged (over: grafana_dash, grafana_verdict)
 

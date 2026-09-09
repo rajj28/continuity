@@ -57,3 +57,17 @@ out/store/tts/
 out/scenes/*
 !out/scenes/S03.mp4
 !out/scenes/manifest.json
+# The produced media itself: dubs, described tracks, subtitles and the packaged
+# deliverables. About 30 MB, and the reason the hosted control room can PLAY
+# what the agents made rather than only describe it. A dub you cannot hear is
+# indistinguishable from one that was never made, and a deployed service that
+# lists four outputs and plays none of them is exactly that.
+!out/ad/
+!out/dub/
+!out/subs/
+!out/deliverables/
+# The scene's own audio, which every market's "original" output resolves to.
+# One object out of the store's objects/ directory, named because the rest of
+# that directory is a quarter of a gigabyte.
+!out/store/objects/27/
+
