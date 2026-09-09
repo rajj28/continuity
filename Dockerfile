@@ -76,6 +76,10 @@ COPY out/ad/ out/ad/
 COPY out/subs/ out/subs/
 COPY out/deliverables/ out/deliverables/
 
+# The screenshots, served at /img/<name>.png from this service's own origin.
+COPY docs/img/ docs/img/
+COPY docs/gallery/ docs/gallery/
+
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1 \

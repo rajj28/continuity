@@ -23,7 +23,11 @@ bin
 # Not needed at runtime. scripts/ IS needed: the control room's approve button
 # runs scripts/repair.py rather than reimplementing a repair.
 tests
-docs
+# The screenshots are served by the control room from its own origin,
+# so they have to be in the image. The rest of docs/ is prose.
+docs/*
+!docs/img/
+!docs/gallery/
 deploy
 grafana/rules/tests
 

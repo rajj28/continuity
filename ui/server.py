@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -57,6 +58,11 @@ from telemetry.otel import load_env  # noqa: E402
 from ui.release import Busy, Release, save_upload  # noqa: E402
 
 log = logging.getLogger("continuity.ui")
+
+# A filename and nothing else -- no slashes, no dots leading anywhere. The
+# lookup below joins this onto a directory, and "checked for .." is not the
+# same guarantee as "cannot contain a separator".
+IMAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.png")
 
 TITLE = "SINTEL"
 STORE = ROOT / "out" / "store"
@@ -889,6 +895,20 @@ class Handler(BaseHTTPRequestHandler):
         # there reports the service down while it is serving every other path
         # perfectly -- which is worse than having no probe at all. Both are
         # answered so a local check written either way still works.
+        # The screenshots, served from our own origin. They live in the repo
+        # and GitHub serves them perfectly well, but raw.githubusercontent.com
+        # answers with `Content-Security-Policy: sandbox`, and a submission
+        # page that silently drops every image is not a thing to discover on
+        # the day. Same bytes, ordinary image response, no third party.
+        if path.startswith("/img/"):
+            name = path[5:]
+            if not IMAGE_NAME.fullmatch(name):
+                return self._json({"error": "not found"}, 404)
+            for folder in ("gallery", "img"):
+                candidate = ROOT / "docs" / folder / name
+                if candidate.is_file():
+                    return self._send(200, candidate.read_bytes(), "image/png")
+            return self._json({"error": "not found"}, 404)
         if path in ("/api/health", "/healthz"):
             return self._json({"ok": True, "at": _now()})
         try:
