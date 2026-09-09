@@ -71,7 +71,7 @@ def spoken() -> dict[str, list[str]]:
     """
     text = SCRIPT.read_text(encoding="utf-8")
     out: dict[str, list[str]] = {}
-    for match in re.finditer(r"^## (VO \d+)[^\n]*\n(.*?)(?=^## |\Z)",
+    for match in re.finditer(r"^## (VO \d+[a-z]?)[^\n]*\n(.*?)(?=^## |\Z)",
                              text, re.S | re.M):
         name = match.group(1).lower().replace(" ", "")
         body = " ".join(
@@ -137,6 +137,23 @@ def captions(order: list[tuple[str, float, float]]) -> Path:
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
     for name, start, length in order:
+        # A block whose sound is the product rather than a voice carries its
+        # own cue timings, written by scripts/listen.py. Spreading three short
+        # labels evenly across it would put "the German dub" on screen while
+        # the original was still playing, which is worse than no caption:
+        # a caption that names the wrong thing is a false claim.
+        timings = VOICE / f"{name}.cues.json"
+        if timings.exists():
+            import json
+            for at, until, cue in json.loads(timings.read_text("utf-8")):
+                text = " ".join(sentences.get(cue, []))
+                if not text:
+                    continue
+                lines.append(f"{index}\n{stamp(start + at)} --> "
+                             f"{stamp(start + until)}\n{text}\n")
+                index += 1
+            continue
+
         parts = sentences.get(name, [])
         if not parts:
             continue

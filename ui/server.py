@@ -226,6 +226,7 @@ class State:
             "proposal": self.proposal(market),
             "assets": self.assets(market),
             "outputs": self.outputs(market),
+            "compliance": self.compliance(market),
             "blast_radius": self.blast_radius(market),
             "grafana": self.grafana_link(market),
         }
@@ -476,6 +477,65 @@ class State:
                 })
                 break
         return out
+
+    def compliance(self, market: str) -> dict[str, Any]:
+        """Who has to say yes, and whether they have.
+
+        The two dimensions no agent here can move. Everywhere else on this
+        screen a red pip means "a file is wrong and something can fix it";
+        here it means a body outside this system has not granted a permission,
+        or has granted it for a different cut, or granted it until a date that
+        has passed. Those are different failures with the same colour, and the
+        difference is the whole reason the compliance specialist holds no
+        repair tool.
+
+        Read through the same functions the release check calls, not a second
+        reading of the same files. A panel that agreed with the board because
+        both were told the same thing, rather than because both asked the same
+        question, would be worth nothing the first time they disagreed.
+        """
+        from datetime import date
+
+        from media.ratings import certification
+        from media.rights import clearance
+
+        profiles = load_profiles()
+        profile = profiles.get(market, {})
+        when = date.today()
+        master = next((a.sha256 for a in self.store.all_assets()
+                       if a.kind == "MASTER"), "")
+
+        cert = certification(market, profile.get("ratings_body", ""),
+                             master, on=when)
+        rights = clearance(market, list(profile.get("rights_required", [])),
+                           on=when)
+        register = cert.detail or {}
+        return {
+            "market": market,
+            "certificate": {
+                "body": cert.body, "state": cert.state, "valid": cert.valid,
+                "rating": cert.rating, "reason": cert.reason,
+                "granted_on": register.get("granted_on", ""),
+                "expires_on": register.get("expires_on", ""),
+                "expected_by": register.get("expected_by", ""),
+                # `certified_sha256` is only ever set on the branch that
+                # found a mismatch, so its presence IS the mismatch: a
+                # certificate granted against an earlier master is not a
+                # certificate for this one, however recently it was issued.
+                "wrong_cut": bool(register.get("certified_sha256")),
+                "certified_sha256": register.get("certified_sha256", ""),
+            },
+            "rights": {
+                "cleared": rights.cleared,
+                "reason": rights.reason(),
+                "required": list(rights.required),
+                "granted": list(rights.granted),
+                "missing": list(rights.missing),
+                "not_yet_open": [list(x) for x in rights.not_yet_open],
+                "expired": [list(x) for x in rights.expired],
+            },
+            "repairable": False,
+        }
 
     def media(self, asset_id: str) -> tuple[Path, str] | None:
         """Resolve an asset id to a file, or nothing.

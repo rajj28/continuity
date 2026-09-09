@@ -45,7 +45,7 @@ def blocks() -> list[tuple[str, str]]:
     """
     text = SCRIPT.read_text(encoding="utf-8")
     out = []
-    for match in re.finditer(r"^## (VO \d+)[^\n]*\n(.*?)(?=^## |\Z)",
+    for match in re.finditer(r"^## (VO \d+[a-z]?)[^\n]*\n(.*?)(?=^## |\Z)",
                              text, re.S | re.M):
         name = match.group(1).lower().replace(" ", "")
         spoken = [

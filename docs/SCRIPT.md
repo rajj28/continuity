@@ -64,6 +64,23 @@ Numbers and units are spelled out because that is how they read correctly.
 >
 > This is not a report about the work. It is the work — you can play it.
 
+## VO 2b — listen to it (over: listen)
+
+Not a narration block. `scripts/listen.py` builds `vo2b.mp3` by putting the
+three cues below either side of the real audio files, so what plays under this
+shot is the dub, and not a description of the dub. Every number on this screen
+is a claim about a sound; this is the sound.
+
+The cues are generated as VO 8, VO 9 and VO 10 and are never blocks of their
+own.
+
+## VO 5b — the ones nobody here can fix (over: compliance)
+
+> Japan is blocked on four things, and not one of them is a file.
+>
+> Two rights — one never granted, one that does not open until the fifteenth.
+> And a certificate nobody has submitted.
+
 ## VO 3 — measured, and judged (over: grafana_dash, grafana_verdict)
 
 > None of it is taken on trust. F F M peg measures every piece — how far the
@@ -118,6 +135,26 @@ Numbers and units are spelled out because that is how they read correctly.
 > Three are not — and each can tell you exactly what it is waiting for.
 >
 > Nobody checked any of this by hand.
+
+---
+
+## The listen cues
+
+Three short reads, spoken either side of the real files. Kept short on purpose:
+the point of the block is the audio underneath them, and a sentence talking
+over a dub is the exact failure this project measures.
+
+## VO 8
+
+> The original.
+
+## VO 9
+
+> The German dub. Same picture, same gaps.
+
+## VO 10
+
+> And the description track — written into the silences between lines.
 
 ---
 

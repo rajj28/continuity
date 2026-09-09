@@ -156,9 +156,125 @@ async def outputs(take, token: str):
         "(() => { const h = [...document.querySelectorAll('#detail h2')]"
         "  .find(e => e.textContent.includes('agents made'));"
         "  if (h) h.scrollIntoView({block: 'start'}); })()")
+    # Then back up past the sticky header. `scrollIntoView` puts the heading at
+    # the top of the viewport and the header sits on top of it, so the first
+    # row's label ended up behind the counts -- a transport moving with nothing
+    # to say which file it belongs to.
+    await take.js("window.scrollBy(0, -72)")
     await asyncio.sleep(1.0)
     await take.push(await take.rect_of_all("#detail .out-row", 22), 1.3)
     await take.hold(10.5)
+
+
+async def listen(take, token: str):
+    """Press play on each transport, at the moment that file is heard.
+
+    The picture for the one block whose soundtrack is the product rather than
+    a voice. `scripts/listen.py` builds that soundtrack and writes the offsets
+    it used to `out/voice/vo2b.cues.json`; the numbers below are the same
+    offsets, so the row that is moving is the row you can hear.
+
+    Recorded with `watch`, at the pace it actually happens, because the whole
+    point of the block is that twenty seconds of audio takes twenty seconds.
+    """
+    import json
+
+    cues = json.loads(
+        (ROOT / "out" / "voice" / "vo2b.cues.json").read_text("utf-8"))
+    # Where each file starts and how long it runs, derived from the gaps
+    # between cues rather than written down twice.
+    plays = []
+    for index, (_start, ends, _name) in enumerate(cues):
+        after = cues[index + 1][0] if index + 1 < len(cues) else None
+        plays.append((ends, (after - ends) if after else 6.0))
+
+    await take.goto(LOCAL + "/#de-DE", settle=2)
+    await take.wait_for(
+        "document.querySelectorAll('#detail .out-row').length > 0", timeout=120)
+    await take.js(
+        "(() => { const h = [...document.querySelectorAll('#detail h2')]"
+        "  .find(e => e.textContent.includes('agents made'));"
+        "  if (h) h.scrollIntoView({block: 'start'}); })()")
+    # Then back up past the sticky header. `scrollIntoView` puts the heading at
+    # the top of the viewport and the header sits on top of it, so the first
+    # row's label ended up behind the counts -- a transport moving with nothing
+    # to say which file it belongs to.
+    await take.js("window.scrollBy(0, -72)")
+    await asyncio.sleep(1.0)
+    # The three audio rows and not the whole panel. Framing the panel put its
+    # top edge between the first row's label and its transport, so the shot
+    # showed a control moving with nothing to say which file it belonged to --
+    # and the packaged video underneath made the region tall enough that
+    # fitting it to 16:9 zoomed the labels down to nothing.
+    await take.push(
+        await take.rect_of_all('#detail .out-row[data-kind="audio"]', 26), 0.1)
+    await take.hold(0.8)
+
+    at = 0.0
+    for index, (begins, runs) in enumerate(plays):
+        if begins > at:
+            await take.watch(begins - at)
+            at = begins
+        # `currentTime` set to the same second the excerpt was cut from, so
+        # the elapsed counter under the transport reads what is being heard.
+        # Seek, then play, then play again half a second later. The third
+        # transport seeked and stopped: `play()` issued in the same tick as a
+        # `currentTime` that has not resolved does nothing, silently, and the
+        # first two only worked because their media was already buffered. The
+        # second call is a no-op when the first one took.
+        seek = ("(() => { const a = document.querySelectorAll("
+                "'#detail .out-row audio, #detail .out-row video')[%d];"
+                " if (a) { a.currentTime = %.2f; a.play(); } })()")
+        nudge = ("(() => { const a = document.querySelectorAll("
+                 "'#detail .out-row audio, #detail .out-row video')[%d];"
+                 " if (a && a.paused) a.play(); })()")
+        await take.js(seek % (index, [12.9, 12.9, 2.9][index]))
+        await take.watch(0.5)
+        await take.js(nudge % index)
+        await take.watch(runs - 0.5)
+        at += runs
+        await take.js(
+            "(() => { const a = document.querySelectorAll("
+            "'#detail .out-row audio, #detail .out-row video')[%d];"
+            " if (a) a.pause(); })()" % index)
+    await take.hold(1.5)
+
+
+async def compliance(take, token: str):
+    """The two dimensions nothing here can repair, and why each is red.
+
+    Japan first, because it fails in three different ways at once -- a right
+    that was never granted, a right whose window has not opened, and a
+    certificate nobody has submitted -- and then Germany, where all of it is
+    green. Same panel, same colours, entirely different reasons.
+    """
+    await take.goto(LOCAL + "/#ja-JP", settle=2)
+    await take.wait_for(
+        "document.querySelectorAll('#detail .comp .card').length > 0",
+        timeout=120)
+    await take.js(
+        "(() => { const h = [...document.querySelectorAll('#detail h2')]"
+        "  .find(e => e.textContent.includes('Compliance'));"
+        "  if (h) h.scrollIntoView({block: 'start'}); })()")
+    # Then back up past the sticky header. `scrollIntoView` puts the heading at
+    # the top of the viewport and the header sits on top of it, so the first
+    # row's label ended up behind the counts -- a transport moving with nothing
+    # to say which file it belongs to.
+    await take.js("window.scrollBy(0, -72)")
+    await asyncio.sleep(1.0)
+    await take.push(await take.rect_of_all("#detail .comp .card", 24), 1.2)
+    await take.hold(7.5)
+    await take.js("location.hash = '#de-DE'")
+    await take.wait_for(
+        "document.querySelectorAll('#detail .comp .card.ok').length > 0",
+        timeout=120)
+    await take.js(
+        "(() => { const h = [...document.querySelectorAll('#detail h2')]"
+        "  .find(e => e.textContent.includes('Compliance'));"
+        "  if (h) h.scrollIntoView({block: 'start'}); })()")
+    await asyncio.sleep(0.8)
+    await take.push(await take.rect_of_all("#detail .comp .card", 24), 1.0)
+    await take.hold(4.0)
 
 
 async def verdict(take, token: str):
@@ -344,6 +460,8 @@ SHOTS = {
     "board": (board, None),
     "release": (release, None),
     "outputs": (outputs, None),
+    "listen": (listen, None),
+    "compliance": (compliance, None),
     "verdict": (verdict, None),
     "coverage": (coverage, None),
     "lineage": (lineage, None),
@@ -366,9 +484,12 @@ SHOTS = {
 BLOCKS = {
     "vo1": ["board"],
     "vo2": ["release", "lineage", "outputs"],
+    # The one block whose soundtrack is the product. See scripts/listen.py.
+    "vo2b": ["listen"],
     "vo3": ["verdict", "grafana_dash", "grafana_verdict"],
     "vo4": ["coverage", "grafana_rule"],
     "vo5": ["swarm"],
+    "vo5b": ["compliance"],
     "vo6": ["repairs", "autonomy", "grafana_agent"],
     "vo7": ["unrepairable", "close"],
 }

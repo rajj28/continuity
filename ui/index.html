@@ -293,6 +293,40 @@
   .out-row video { width: 100%; border-radius: 4px; display: block;
                    background: #000; }
 
+  /* Who has to say yes, and whether they have. Everywhere else on this
+     screen a red pip means a file is wrong and something can fix it. Here it
+     means a body outside this system has not granted a permission, granted it
+     for a different cut, or granted it until a date that has passed -- three
+     different failures wearing the same colour, and none of them repairable
+     by anything in this repository. */
+  .comp { display: grid; gap: 9px; }
+  .comp .card { background: var(--raised); border: 1px solid var(--line);
+                border-left-width: 3px; border-radius: 6px; padding: 10px 12px; }
+  .comp .card.ok   { border-left-color: var(--good); }
+  .comp .card.bad  { border-left-color: var(--critical); }
+  .comp .top { display: flex; align-items: baseline; gap: 8px; }
+  .comp .top b { font: 600 12px var(--sans); }
+  .comp .body { font: 600 11px/1 var(--mono); color: var(--ink-2);
+                letter-spacing: .04em; }
+  .comp .state { margin-left: auto; font: 600 9px/1.7 var(--mono);
+                 letter-spacing: .1em; text-transform: uppercase;
+                 padding: 0 7px; border-radius: 3px; }
+  .comp .card.ok  .state { color: var(--good-ink);
+                           box-shadow: inset 0 0 0 1px rgba(12,163,12,.4); }
+  .comp .card.bad .state { color: var(--critical-ink);
+                           box-shadow: inset 0 0 0 1px rgba(208,59,59,.4); }
+  .comp .said { margin-top: 6px; font-size: 12px; line-height: 1.55;
+                color: var(--ink-2); }
+  .comp .rights { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .comp .right { font: 10px/1.7 var(--mono); padding: 0 7px; border-radius: 3px;
+                 color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line-2); }
+  .comp .right.has { color: var(--good-ink);
+                     box-shadow: inset 0 0 0 1px rgba(12,163,12,.35); }
+  .comp .right.no  { color: var(--critical-ink);
+                     box-shadow: inset 0 0 0 1px rgba(208,59,59,.35); }
+  .comp .right.wait { color: var(--warning-ink);
+                      box-shadow: inset 0 0 0 1px rgba(250,178,25,.35); }
+
   .prop { border-left: 3px solid var(--s1); background: var(--raised); }
   dl.kv { display: grid; grid-template-columns: 88px 1fr; gap: 7px 14px;
           margin: 0 0 13px; }
@@ -819,11 +853,55 @@ function renderDetail(d) {
       <td>${esc(x.label)}<span class="q">${esc(x.query)}</span></td>
       <td class="n">${esc(x.value)}</td></tr>`).join("")}</table></div>` : "";
 
+  const c = d.compliance;
+  const rightChip = (name) => {
+    const r = c.rights;
+    const waiting = (r.not_yet_open || []).find(x => x[0] === name);
+    const gone = (r.expired || []).find(x => x[0] === name);
+    if (gone) return `<span class="right no">${esc(name)} · expired ${esc(gone[1])}</span>`;
+    if (waiting) return `<span class="right wait">${esc(name)} · opens ${esc(waiting[1])}</span>`;
+    if ((r.missing || []).includes(name))
+      return `<span class="right no">${esc(name)} · no grant</span>`;
+    return `<span class="right has">${esc(name)}</span>`;
+  };
+  const compliance = c ? `<div class="pad">
+    <h2 style="margin-bottom:9px">Compliance <em>who has to say yes</em></h2>
+    <div class="comp">
+      <div class="card ${c.certificate.valid ? "ok" : "bad"}">
+        <div class="top"><b>Certification</b>
+          <span class="body">${esc(c.certificate.body)}</span>
+          <span class="state">${c.certificate.valid ? "valid"
+            : esc(c.certificate.state.replace("_", " "))}</span></div>
+        <div class="said">${c.certificate.valid
+          ? `Rated ${esc(c.certificate.rating)}` +
+            (c.certificate.expires_on
+              ? ` · expires ${esc(c.certificate.expires_on)}`
+              : ` · no expiry`) +
+            ` · granted against this cut`
+          : esc(c.certificate.reason)}</div>
+        ${c.certificate.wrong_cut ? `<span class="q">granted against ${
+          esc(c.certificate.certified_sha256.slice(0, 12))} — a re-cut
+          invalidates a certificate</span>` : ""}
+      </div>
+      <div class="card ${c.rights.cleared ? "ok" : "bad"}">
+        <div class="top"><b>Rights</b>
+          <span class="body">${c.rights.required.length} required</span>
+          <span class="state">${c.rights.cleared ? "cleared" : "blocked"}</span></div>
+        <div class="said">${esc(c.rights.reason)}</div>
+        <div class="rights">${c.rights.required.map(rightChip).join("")}</div>
+      </div>
+    </div>
+    <p class="why">Neither of these is repairable, and no agent here is given a
+    tool that could pretend otherwise. A missing right is an absent legal
+    permission and a certificate is a decision by a regulator — the compliance
+    specialist can gather the facts and escalate, and that is all it can do.</p>
+  </div>` : "";
+
   const outputs = (d.outputs && d.outputs.length) ? `<div class="pad">
     <h2 style="margin-bottom:9px">What the agents made
       <em>the actual files, not a description of them</em></h2>
     <div class="outputs">${d.outputs.map(o => `
-      <div class="out-row">
+      <div class="out-row" data-kind="${o.media.startsWith("video") ? "video" : "audio"}">
         <div class="out-head">
           <b>${esc(o.label)}</b><span>${esc(o.note)}</span>
           <span class="v">v${o.version} · ${(o.bytes / 1048576).toFixed(1)} MB</span>
@@ -914,11 +992,22 @@ function renderDetail(d) {
     <div class="pad"><table class="rows">
     <tr><th>Measurement</th><th style="text-align:right">Measured</th>
         <th style="text-align:right">Bar</th></tr>${rows}</table></div>`
-    + outputs + diag + assets + blast;
+    + outputs + compliance + diag + assets + blast;
 
   const a = $("approve"); if (a) a.onclick = () => approve(a.dataset.m, a);
   const i = $("investigate"); if (i) i.onclick = () => investigate(i.dataset.m, i);
 }
+
+// A link that changes in place should move the screen. The hash was read
+// once, on the first board render, so pasting a different market's URL into a
+// tab that already had one did nothing at all -- the address bar said one
+// market and the panel showed another, which is the kind of quiet
+// disagreement this whole screen exists to prevent.
+window.addEventListener("hashchange", () => {
+  const asked = decodeURIComponent((location.hash || "").slice(1));
+  if (asked && asked !== selected && board
+      && board.markets.some(m => m.market === asked)) select(asked);
+});
 
 async function select(market) {
   selected = market;
