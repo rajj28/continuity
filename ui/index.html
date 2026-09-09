@@ -301,6 +301,80 @@
   dl.kv dd { margin: 0; font-size: 12px; }
   dl.kv dd.mono { font-family: var(--mono); font-size: 11px; }
 
+  /* ---- new release ------------------------------------------------ */
+  /* The way in. Everything below this panel is a reading of what came out of
+     it, so it sits at the top: a master and its dialogue list go in, and a
+     package a market can actually receive comes out. */
+  .drop { border: 1px dashed var(--line-2); border-radius: 6px;
+          padding: 18px 16px; text-align: center; color: var(--ink-3);
+          font-size: 12px; transition: border-color .15s, background .15s; }
+  .drop[data-over="1"] { border-color: var(--s1); background: var(--raised);
+                         color: var(--ink-2); }
+  .drop b { color: var(--ink-2); font-weight: 600; }
+  .drop .browse { color: #8ab8f2; text-decoration: underline;
+                  text-underline-offset: 2px; cursor: pointer; }
+  .picks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px;
+           margin-top: 13px; }
+  .picks label { display: block; font: 600 9px/1.6 var(--sans);
+                 letter-spacing: .1em; text-transform: uppercase;
+                 color: var(--ink-3); }
+  .picks select { width: 100%; margin-top: 5px; background: var(--sunken);
+                  color: var(--ink); border: 1px solid var(--line);
+                  border-radius: 5px; padding: 7px 8px;
+                  font: 11px var(--mono); }
+  .mkpick { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
+  .mkpick label { display: inline-flex; align-items: center; gap: 6px;
+                  background: var(--raised); border: 1px solid var(--line);
+                  border-radius: 999px; padding: 5px 11px 5px 9px;
+                  font: 11px var(--mono); color: var(--ink-2);
+                  cursor: pointer; user-select: none; }
+  .mkpick label:has(input:checked) { border-color: var(--s1);
+                                     color: var(--ink); }
+  .mkpick input { accent-color: var(--s1); margin: 0; }
+  .buildbar { display: flex; align-items: center; gap: 12px;
+              margin-top: 14px; }
+  .buildbar .note { font-size: 11px; color: var(--ink-3); }
+
+  /* The plan, drawn before any of it runs. A progress bar would say how far
+     through it is; this says what it is doing, which is the part worth
+     watching when a step takes ninety seconds. */
+  .rail { display: grid; gap: 1px; background: var(--line);
+          border-top: 1px solid var(--line); }
+  .rail .st { display: flex; align-items: baseline; gap: 10px;
+              background: var(--panel); padding: 9px 16px; font-size: 12px;
+              color: var(--ink-4); }
+  .rail .st .n { flex: none; width: 15px; height: 15px; border-radius: 50%;
+                 border: 1px solid var(--line-2); display: inline-block;
+                 position: relative; top: 2px; }
+  .rail .st b { font: 600 12px var(--sans); color: var(--ink-3); }
+  .rail .st i { font-style: normal; font-size: 11px; }
+  /* Named `tgt` and not `mk`: this stylesheet already has a `.mk`, a 9px
+     square that means a check result, and reusing the name painted a
+     green block over every market name on the rail. */
+  .rail .st .tgt { margin-left: auto; font: 11px var(--mono);
+                   white-space: nowrap; }
+  .rail .st[data-state="running"] { color: var(--ink-2); }
+  .rail .st[data-state="running"] b { color: var(--ink); }
+  .rail .st[data-state="running"] .n { border-color: var(--s1);
+    box-shadow: inset 0 0 0 3px var(--panel), inset 0 0 0 9px var(--s1);
+    animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) {
+    .rail .st[data-state="running"] .n { animation: none; } }
+  .rail .st[data-state="done"] b { color: var(--ink-2); }
+  .rail .st[data-state="done"] .n { border-color: var(--good);
+    background: var(--good); }
+  .rail .st[data-state="failed"] b { color: var(--critical-ink); }
+  .rail .st[data-state="failed"] .n { border-color: var(--critical);
+    background: var(--critical); }
+  .rail .st .took { font: 10px var(--mono); color: var(--ink-4); }
+  .buildlog { max-height: 190px; overflow: auto; font: 10px/1.6 var(--mono);
+              color: var(--ink-3); background: var(--sunken);
+              border-top: 1px solid var(--line); }
+  .buildlog div { white-space: pre-wrap; word-break: break-word; }
+  .buildlog div.notable { color: var(--ink-2); }
+  .buildlog div.bad { color: var(--critical-ink); }
+
   button.go {
     font: 600 12px var(--sans); background: var(--s1); color: #fff; border: 0;
     border-radius: 5px; padding: 9px 15px; cursor: pointer;
@@ -388,6 +462,30 @@
   <section>
     <div id="needs"></div>
 
+    <h2>New release <em>a master goes in, market packages come out</em></h2>
+    <div class="panel" id="build">
+      <div class="pad">
+        <div class="drop" id="drop">
+          <b>Drop a master and its dialogue list here</b>
+          — or <span class="browse" id="browse" role="button" tabindex="0">choose
+          files</span>. Video plus the .srt of what is said in it.
+          <input id="files" type="file" multiple hidden
+                 accept="video/mp4,video/quicktime,video/x-matroska,.srt">
+        </div>
+        <div class="picks">
+          <label>Master<select id="pick-master"></select></label>
+          <label>Dialogue list<select id="pick-dialogue"></select></label>
+        </div>
+        <div class="mkpick" id="pick-markets"></div>
+        <div class="buildbar">
+          <button class="go" id="build-go" disabled>Build the release</button>
+          <span class="note" id="build-note">Sign in as operator to build.</span>
+        </div>
+      </div>
+      <div class="rail" id="rail" hidden></div>
+      <div class="pad buildlog" id="buildlog" hidden></div>
+    </div>
+
     <h2>Release readiness <em>every market, every dimension</em>
       <span class="spacer"></span>
       <span class="muted" style="font-size:10px;letter-spacing:0;text-transform:none">
@@ -467,6 +565,7 @@ function markSignedIn() {
   const on = !!token();
   $("signin").textContent = on ? "Operator signed in" : "Operator sign-in";
   $("signin").dataset.on = on ? "1" : "0";
+  gateBuild();
 }
 
 let pop = null;
@@ -855,6 +954,29 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+/* ---- server-sent events ----------------------------------------------
+   Read off the response body rather than through EventSource, because both
+   streams here are POSTs behind a bearer token and EventSource can send
+   neither. Events are separated by a blank line; a partial one is held back
+   in the buffer rather than parsed, which is the only reason the buffer
+   exists. */
+async function readEvents(response, onEvent) {
+  const reader = response.body.getReader(), dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const {value, done} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream: true});
+    const parts = buf.split("\n\n"); buf = parts.pop();
+    for (const p of parts) {
+      const line = p.split("\n").find(x => x.startsWith("data: "));
+      if (!line) continue;
+      const ev = JSON.parse(line.slice(6));
+      if (ev.type !== "end") onEvent(ev);
+    }
+  }
+}
+
 /* ---- actions --------------------------------------------------------- */
 function pushEvent(ev) {
   const box = $("trace");
@@ -903,21 +1025,7 @@ async function investigate(market, btn) {
       pushEvent({type: "error", detail: "operator token rejected"});
       markSignedIn(); return;
     }
-    const reader = r.body.getReader(), dec = new TextDecoder();
-    let buf = "";
-    for (;;) {
-      const {value, done} = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, {stream: true});
-      const parts = buf.split("\n\n"); buf = parts.pop();
-      for (const p of parts) {
-        const line = p.split("\n").find(x => x.startsWith("data: "));
-        if (!line) continue;
-        const ev = JSON.parse(line.slice(6));
-        if (ev.type === "end") continue;
-        pushEvent(ev);
-      }
-    }
+    await readEvents(r, pushEvent);
   } catch (e) {
     pushEvent({type: "error", detail: String(e)});
   } finally {
@@ -943,6 +1051,177 @@ async function approve(market, btn) {
   }
 }
 
+/* ---- building a release ----------------------------------------------
+   The way into the system. A master and the list of what is said in it go
+   in; a package each market can receive comes out. The stages that do it are
+   the ones in the README -- this starts them and reports what they print,
+   because a build that only moved a bar on the screen would prove nothing. */
+let sources = null, building = false;
+
+function gateBuild() {
+  const go = $("build-go"), note = $("build-note");
+  if (!go) return;
+  const chosen = [...document.querySelectorAll("#pick-markets input:checked")];
+  const ready = !!token() && !!sources && sources.masters.length
+                && sources.dialogues.length && chosen.length && !building;
+  go.disabled = !ready;
+  note.textContent =
+    building ? "Building — the stages are running now."
+    : !token() ? "Sign in as operator to build: every line is spoken through a model."
+    : !chosen.length ? "Choose at least one market."
+    : !sources || !sources.dialogues.length ? "A dialogue list (.srt) is needed."
+    : chosen.length + (chosen.length === 1 ? " market" : " markets")
+      + " · seven stages each run for real.";
+}
+
+async function loadSources(select) {
+  sources = await (await fetch("/api/sources")).json();
+  for (const [id, list] of [["pick-master", sources.masters],
+                            ["pick-dialogue", sources.dialogues]]) {
+    const el = $(id), had = el.value;
+    el.innerHTML = list.map(f =>
+      `<option value="${esc(f.path)}">${esc(f.name)} · ${mb(f.bytes)}` +
+      `${f.stock ? " · shipped with the project" : ""}</option>`).join("")
+      || `<option value="">none yet</option>`;
+    // Keep what was selected across a refresh, unless this call knows better
+    // -- an upload should land selected, and nothing else should move.
+    const wanted = (select && list.some(f => f.path === select)) ? select : had;
+    if (wanted) el.value = wanted;
+  }
+  gateBuild();
+}
+
+function mb(n) {
+  return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB"
+       : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B";
+}
+
+function renderMarketPicks() {
+  const box = $("pick-markets");
+  if (!board || box.dataset.drawn === "1") return;
+  box.dataset.drawn = "1";
+  box.innerHTML = board.markets.map(m =>
+    `<label><input type="checkbox" value="${esc(m.market)}"
+      ${m.market === "de-DE" ? "checked" : ""}>${esc(m.market)}
+      <span class="muted">${esc(m.name)}</span></label>`).join("");
+  box.onchange = gateBuild;
+  gateBuild();
+}
+
+async function upload(files) {
+  if (!token()) { $("signin").click(); return; }
+  const drop = $("drop"), was = drop.innerHTML;
+  let last = null;
+  for (const file of files) {
+    drop.textContent = `Uploading ${file.name} — ${mb(file.size)}…`;
+    try {
+      const r = await fetch("/api/upload?name=" + encodeURIComponent(file.name),
+                            {method: "POST", headers: authHeaders(), body: file});
+      const d = await r.json();
+      if (d.error) { drop.textContent = d.error; await pause(2500); continue; }
+      last = d;
+      await loadSources(d.path);
+    } catch (e) {
+      drop.textContent = String(e); await pause(2500);
+    }
+  }
+  drop.innerHTML = was;
+  if (last) gateBuild();
+}
+
+const pause = (ms) => new Promise(r => setTimeout(r, ms));
+
+function buildLog(ev) {
+  const box = $("buildlog");
+  box.hidden = false;
+  const row = document.createElement("div");
+  row.className = ev.bad ? "bad" : (ev.notable ? "notable" : "");
+  row.textContent = ev.line;
+  box.appendChild(row);
+  while (box.childElementCount > 400) box.firstElementChild.remove();
+  box.scrollTop = box.scrollHeight;
+}
+
+function drawRail(steps) {
+  $("rail").hidden = false;
+  $("rail").innerHTML = steps.map((s, i) =>
+    `<div class="st" data-step="${esc(s.id)}" data-state="waiting">
+       <span class="n"></span><b>${esc(s.label)}</b>
+       <i>${esc(s.detail)}</i>
+       <span class="tgt">${esc(s.market || "")}</span>
+       <span class="took"></span></div>`).join("");
+}
+
+async function runBuild() {
+  const markets = [...document.querySelectorAll("#pick-markets input:checked")]
+    .map(i => i.value);
+  const q = new URLSearchParams();
+  q.set("master", $("pick-master").value);
+  q.set("dialogue", $("pick-dialogue").value);
+  for (const m of markets) q.append("market", m);
+
+  building = true; busy = true; gateBuild();
+  $("buildlog").innerHTML = ""; $("buildlog").hidden = true;
+  $("rail").hidden = true;
+  try {
+    const r = await fetch("/api/release?" + q.toString(),
+                          {method: "POST", headers: authHeaders()});
+    if (!r.ok || r.headers.get("Content-Type") !== "text/event-stream") {
+      const d = await r.json().catch(() => ({error: "HTTP " + r.status}));
+      buildLog({line: d.error || "the build could not be started", bad: true});
+      if (r.status === 401) markSignedIn();
+      return;
+    }
+    await readEvents(r, (ev) => {
+      if (ev.type === "plan") {
+        drawRail(ev.steps);
+        buildLog({line: `${ev.master} + ${ev.dialogue} → `
+                        + ev.markets.join(", "), notable: true});
+      } else if (ev.type === "step") {
+        const el = document.querySelector(`.st[data-step="${CSS.escape(ev.id)}"]`);
+        if (!el) return;
+        el.dataset.state = ev.state;
+        if (ev.seconds != null)
+          el.querySelector(".took").textContent = ev.seconds + "s";
+        if (ev.state === "running") el.scrollIntoView({block: "nearest"});
+      } else if (ev.type === "log") {
+        buildLog(ev);
+      } else if (ev.type === "halted" || ev.type === "error") {
+        buildLog({line: ev.detail || "the build stopped", bad: true});
+      } else if (ev.type === "done") {
+        buildLog({line: `finished in ${ev.seconds}s — re-reading the verdict `
+                        + `from Grafana`, notable: true});
+      }
+    });
+  } catch (e) {
+    buildLog({line: String(e), bad: true});
+  } finally {
+    building = false; busy = false; gateBuild();
+    // The verdict is not ours to compute. The build changed what is measured;
+    // Grafana decides what that means, and this asks it again.
+    await refresh();
+    if (selected) select(selected);
+  }
+}
+
+$("build-go").onclick = runBuild;
+$("browse").onclick = () => $("files").click();
+$("browse").onkeydown = (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("files").click(); }
+};
+$("files").onchange = (e) => { upload([...e.target.files]); e.target.value = ""; };
+for (const name of ["dragenter", "dragover"])
+  $("drop").addEventListener(name, (e) => {
+    e.preventDefault(); $("drop").dataset.over = "1";
+  });
+for (const name of ["dragleave", "drop"])
+  $("drop").addEventListener(name, (e) => {
+    e.preventDefault(); $("drop").dataset.over = "0";
+  });
+$("drop").addEventListener("drop", (e) => {
+  upload([...(e.dataTransfer ? e.dataTransfer.files : [])]);
+});
+
 /* ---- loop ------------------------------------------------------------ */
 async function refresh() {
   if (busy) return;
@@ -950,6 +1229,7 @@ async function refresh() {
     const d = await (await fetch("/api/board")).json();
     if (d.error) throw new Error(d.error);
     renderBoard(d);
+    renderMarketPicks();
     clearFail();
   } catch (e) {
     fail("The board could not be read: " + e.message +
@@ -966,6 +1246,7 @@ $("rows").innerHTML = `<tr><td class="pad" colspan="10">
   <div class="sk" style="width:70%;margin-top:10px"></div>
   <div class="sk" style="width:55%;margin-top:10px"></div></td></tr>`;
 markSignedIn();
+loadSources().catch(() => { /* the picker is not the board; it can wait */ });
 refresh();
 setInterval(refresh, 15000);
 </script>

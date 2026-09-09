@@ -54,6 +54,7 @@ from media.qc.profiles import load_profiles  # noqa: E402
 from media.store import Store  # noqa: E402
 from telemetry.exporters.thresholds import required_checks  # noqa: E402
 from telemetry.otel import load_env  # noqa: E402
+from ui.release import Busy, Release, save_upload  # noqa: E402
 
 log = logging.getLogger("continuity.ui")
 
@@ -118,6 +119,7 @@ class State:
         self.token = self.env.get("WAKE_TOKEN", "")
         # Published deliberately. Investigations only -- see `_authorised`.
         self.demo_token = self.env.get("DEMO_TOKEN", "")
+        self.release = Release()
         self._lock = threading.Lock()
 
     # -- the readiness matrix ---------------------------------------------
@@ -809,6 +811,8 @@ class Handler(BaseHTTPRequestHandler):
                 from urllib.parse import parse_qs, urlparse
                 asset = parse_qs(urlparse(self.path).query).get("asset", [""])[0]
                 return self._media(asset)
+            if path == "/api/sources":
+                return self._json(self.state.release.sources())
             if path == "/api/history":
                 return self._json(self.state.history())
             if path.startswith("/api/market/"):
@@ -820,7 +824,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
+        # Upload first, and before the drain: the drain exists to empty a body
+        # nobody wanted, and this is the one request whose body IS the point.
+        if path == "/api/upload":
+            if not self._authorised():
+                self._drain()
+                return self._json({"error": "operator token required"}, 401)
+            return self._upload()
+
         self._drain()
+        if path == "/api/release":
+            if not self._authorised():
+                return self._json({"error": (
+                    "operator token required: a build speaks every line of "
+                    "dialogue through a model and rewrites this title's assets"
+                )}, 401)
+            return self._start_release()
         if not (path.startswith("/api/approve/")
                 or path.startswith("/api/investigate/")):
             return self._json({"error": "not found"}, 404)
@@ -842,10 +861,104 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "error": str(exc)[:400]}, 500)
         return self._stream_investigation(market)
 
+    # -- uploading a master ------------------------------------------------
+
+    UPLOAD_MAX = 600 * 1024 * 1024
+
+    def _upload(self) -> None:
+        """Take a file off the wire and write it where a build can find it.
+
+        Read in chunks and never into memory whole: a master is measured in
+        hundreds of megabytes, and a service that holds one in a string to save
+        eight lines here is a service that dies on the file it was built for.
+
+        Hosted, Cloud Run caps a request body at 32 MB, so a full-length master
+        arrives by being in the image rather than through this door. That is
+        why the stock master is offered in the picker: the upload path is for
+        the scene-length clips a person actually has to hand.
+        """
+        from urllib.parse import parse_qs, urlparse
+
+        name = parse_qs(urlparse(self.path).query).get("name", [""])[0]
+        length = int(self.headers.get("Content-Length") or 0)
+        if not name or length <= 0:
+            self._drain()
+            return self._json({"error": "expected ?name= and a body"}, 400)
+        if length > self.UPLOAD_MAX:
+            self._drain()
+            return self._json({"error": "file is larger than 600 MB"}, 413)
+
+        def chunks():
+            left = length
+            while left > 0:
+                block = self.rfile.read(min(left, 1024 * 1024))
+                if not block:
+                    return
+                left -= len(block)
+                yield block
+
+        try:
+            return self._json(save_upload(name, chunks()))
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        except OSError as exc:                                # noqa: BLE001
+            log.exception("upload failed")
+            return self._json({"error": str(exc)[:300]}, 500)
+
+    # -- building a release --------------------------------------------------
+
+    def _start_release(self) -> None:
+        """Validate the request, then hand the build to the event stream.
+
+        Validation happens before a single byte of `text/event-stream` is
+        written, because once the response is committed as a stream the only
+        way left to report "you asked for a market that does not exist" is an
+        event the page has to be written to notice.
+        """
+        from urllib.parse import parse_qs, urlparse
+
+        query = parse_qs(urlparse(self.path).query)
+        markets = [m for m in query.get("market", []) if m]
+        scene = (query.get("scene", ["S03"])[0] or "S03")
+        known = set(load_profiles())
+        unknown = [m for m in markets if m not in known]
+        if not markets:
+            return self._json({"error": "choose at least one market"}, 400)
+        if unknown:
+            return self._json(
+                {"error": "no profile for " + ", ".join(unknown)}, 400)
+        if self.state.release.running is not None:
+            return self._json({"error": "a build is already running"}, 409)
+
+        try:
+            master = self.state.release.resolve(
+                query.get("master", [""])[0], subtitle=False)
+            dialogue = self.state.release.resolve(
+                query.get("dialogue", [""])[0], subtitle=True)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+
+        def work(sink) -> None:
+            self.state.release.build(master, dialogue, markets, scene, sink)
+
+        self._events(work, "build")
+
     def _stream_investigation(self, market: str) -> None:
         """Server-sent events, so an operator watches the agent rather than a
         spinner. Watching it decide is the difference between believing it
         reasoned and taking its word for it."""
+        self._events(lambda sink: self.state.investigate(market, sink),
+                     "investigation")
+
+    def _events(self, worker, what: str) -> None:
+        """One long response, one event per thing that happened.
+
+        The worker runs on its own thread and posts into a queue rather than
+        writing to the socket, so a slow client cannot slow the work down and a
+        client that leaves cannot stop it. Both matter: an investigation costs
+        model quota whether or not anyone is still watching, and a half-run
+        build leaves assets whose parents were never recorded.
+        """
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
@@ -860,9 +973,11 @@ class Handler(BaseHTTPRequestHandler):
 
         def work() -> None:
             try:
-                self.state.investigate(market, sink)
+                worker(sink)
+            except Busy as exc:
+                events.put({"type": "error", "detail": str(exc)})
             except Exception as exc:                          # noqa: BLE001
-                log.exception("investigation failed")
+                log.exception("%s failed", what)
                 events.put({"type": "error", "detail": str(exc)[:400]})
             finally:
                 events.put(done)
@@ -877,9 +992,10 @@ class Handler(BaseHTTPRequestHandler):
                     f"data: {json.dumps(event)}\n\n".encode("utf-8"))
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
-                # The operator navigated away. The agent keeps working -- its
-                # conclusion is written to the intent store either way.
-                log.info("client disconnected mid-investigation")
+                # The operator navigated away. The work keeps going -- an
+                # agent's conclusion is written to the intent store and a
+                # build's output to the asset store either way.
+                log.info("client disconnected mid-%s", what)
                 return
         try:
             self.wfile.write(b"data: {\"type\": \"end\"}\n\n")
