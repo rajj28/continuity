@@ -43,6 +43,9 @@ Numbers and units are spelled out because that is how they read correctly.
 > Any one of them can be wrong. All of them can be broken by a single change
 > upstream.
 >
+> Today most of that is checked by hand, one file at a time. The checking
+> takes longer than the making.
+>
 > So we built Continuity: a global release system. One film goes in, and a
 > crew of agents prepares every market's release.
 >
@@ -120,8 +123,21 @@ said.
 > And a check nobody ran blocks just as hard as one that failed. Most
 > monitoring goes quiet when it breaks. This goes red.
 >
-> Nobody sits watching this. Grafana re-evaluates every thirty seconds, and
-> when a market fails, it calls the agents itself.
+> Grafana re-evaluates every thirty seconds, and when a market fails, it calls
+> the agents itself.
+
+## VO 4b — the receiver answers (over: wakelog)
+
+The one claim the film used to make without showing it. The alert rule page
+proves a rule exists and is firing; it does not prove anything answered. This
+is the deployed receiver's own log, read out of Cloud Logging by
+`scripts/wakelog.py` rather than typed.
+
+> Nobody presses anything. The rule fires, and the receiver's own log says
+> which markets it woke the agents for.
+>
+> Three at once. And a second rule underneath, watching whether the last
+> repair actually held.
 
 ## VO 5 — the crew (over: swarm)
 
@@ -135,18 +151,46 @@ said.
 >
 > Its limits are in what it can call. Not in what it was told.
 
+## VO 5c — one gets fixed (over: repair)
+
+> Brazil's dub is five decibels louder than its market allows.
+>
+> The audio specialist proposes a remix and, before it touches anything, says
+> where the number will land. Minus eighteen point seven eight, to at or below
+> minus twenty four.
+>
+> The localisation specialist looks at the same market and refuses. The drift
+> is not systematic, so a retime would not fix it — and it says so, instead of
+> trying.
+>
+> Approve one, and it runs on the real audio. Then the same probe measures the
+> result.
+>
+> This one landed at minus twenty three point three two. Better than it was,
+> and short of what it promised.
+>
+> So it is recorded as a failure.
+
 ## VO 6 — marked on being right (over: repairs, autonomy, grafana_agent)
 
-> Before an agent touches anything, it has to say what will happen. Which
-> measurement, which direction, past which number.
+> Improving a number is not the same as being right. Getting away with it is
+> marked lucky, and lucky counts against the strategy rather than for it.
 >
-> This repair worked. Three hundred and seventy five milliseconds, down to
-> seventeen. It is still not marked a success — it said the drift would pass
-> zero and it stopped short, so it is marked lucky, and lucky counts against
-> it.
+> A repair earns the authority to run without asking after three verified
+> successes, and loses it again the moment the record stops holding.
 >
-> And these failures are real. The fix went the wrong way and made it worse.
-> Every one was caught before anything shipped.
+> And the agents are not merely watched by this stack. They are watched in the
+> same stack they read their instructions from.
+
+## VO 6b — the wiring (over: architecture)
+
+> Underneath: F F M peg measures, OpenTelemetry carries it, Prometheus stores
+> it, and a Mimir recording rule decides.
+>
+> Gemini adapts and speaks every line. The Agent Development Kit runs the
+> specialists. Two Cloud Run services share one image and one digest, so a
+> repair started by an alert and a repair approved by a person are the same
+> code.
 
 ## VO 7 — close (over: unrepairable, close)
 

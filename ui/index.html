@@ -992,7 +992,7 @@ function renderDetail(d) {
     <button class="go alt" id="investigate" data-m="${esc(d.market)}">Investigate now</button>
     <p class="why">Runs the Conductor on the Agent Development Kit. Every tool
     call it makes appears on the left as it happens.</p></div>
-    <div class="pad"><table class="rows">
+    <div class="pad"><table class="rows" id="measured">
     <tr><th>Measurement</th><th style="text-align:right">Measured</th>
         <th style="text-align:right">Bar</th></tr>${rows}</table></div>`
     + outputs + compliance + diag + assets + blast;

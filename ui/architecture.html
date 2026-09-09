@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Continuity — the loop</title>
+<!--
+  One frame for the wiring.
+
+  The film shows every stage of this working and never draws the shape, so a
+  viewer has to hold five separate screens in their head and infer the circle.
+  This is the circle: what runs, what carries the numbers, what decides, and
+  what is allowed to write.
+
+  Laid out as a band rather than a graph because it IS a band -- the loop has
+  one direction and one return path, and boxes-and-arrows would imply a
+  freedom of movement that the contracts specifically do not allow.
+
+  Kept clear of the bottom fifth: the burned-in captions sit there.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0b0a; --panel: #131312; --raised: #1b1b19;
+    --line: #262623; --line-2: #35352f;
+    --ink: #f6f5f1; --ink-2: #a8a69c; --ink-3: #6b6960; --ink-4: #4a4842;
+    --good: #0ca30c; --good-ink: #67d167; --warn: #e0b558;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .wrap { width: min(1720px, 93vw); padding-bottom: 7vh; }
+
+  h1 { margin: 0 0 3px; font: 600 13px/1 var(--sans); letter-spacing: .22em;
+       text-transform: uppercase; color: var(--ink-3); }
+  h1 span { color: var(--ink); }
+  .sub { margin: 0 0 30px; font: 15px/1.5 var(--sans); color: var(--ink-4); }
+
+  .band { display: grid; grid-template-columns: repeat(5, 1fr);
+          gap: 0 14px; align-items: stretch; }
+  .step { position: relative; background: var(--panel);
+          border: 1px solid var(--line); border-top: 2px solid var(--slot);
+          border-radius: 8px; padding: 18px 18px 20px; }
+  .step:nth-child(1) { --slot: var(--s1); }
+  .step:nth-child(2) { --slot: var(--s2); }
+  .step:nth-child(3) { --slot: var(--s3); }
+  .step:nth-child(4) { --slot: var(--good); }
+  .step:nth-child(5) { --slot: var(--s4); }
+  /* The arrow between steps, drawn as a glyph in the gutter rather than as
+     an SVG: one character, always centred, never a fraction of a pixel off. */
+  .step + .step::before {
+    content: "\203A"; position: absolute; left: -16px; top: 50%;
+    transform: translateY(-50%); color: var(--ink-4);
+    font: 26px/1 var(--mono);
+  }
+  .n { font: 600 11px/1 var(--mono); color: var(--slot);
+       letter-spacing: .18em; }
+  .step h2 { margin: 11px 0 8px; font: 600 21px/1.2 var(--sans);
+             letter-spacing: .01em; }
+  .step p { margin: 0; font: 14px/1.6 var(--sans); color: var(--ink-2); }
+  .step ul { margin: 14px 0 0; padding: 0; list-style: none;
+             border-top: 1px solid var(--line); padding-top: 12px; }
+  .step li { font: 13px/1.85 var(--mono); color: var(--ink-3); }
+  .step li b { color: var(--ink-2); font-weight: 500; }
+
+  .back { margin-top: 16px; border: 1px dashed var(--line-2);
+          border-radius: 8px; padding: 13px 18px; display: flex;
+          align-items: center; gap: 14px; }
+  .back .tag { font: 600 10px/1.9 var(--mono); letter-spacing: .16em;
+               text-transform: uppercase; color: var(--warn);
+               white-space: nowrap; }
+  .back p { margin: 0; font: 14px/1.5 var(--sans); color: var(--ink-3); }
+
+  .feet { margin-top: 20px; display: flex; gap: 34px; flex-wrap: wrap; }
+  .feet div { font: 13px/1.6 var(--mono); color: var(--ink-4); }
+  .feet b { color: var(--ink-2); font-weight: 500; }
+  .feet em { font-style: normal; color: var(--good-ink); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>The loop · <span>Continuity</span></h1>
+    <p class="sub">A master goes in at the left. Nothing leaves the right until
+      Grafana says it can.</p>
+
+    <div class="band">
+      <div class="step">
+        <div class="n">01</div>
+        <h2>Ingest</h2>
+        <p>The master and its dialogue list, cut into scenes on the gaps
+          between lines.</p>
+        <ul>
+          <li><b>ffmpeg</b></li>
+          <li>content-addressed store</li>
+          <li>every asset records its parents</li>
+        </ul>
+      </div>
+
+      <div class="step">
+        <div class="n">02</div>
+        <h2>Build</h2>
+        <p>Per market: the dub, the subtitles, the described track, the
+          storefront record, the package.</p>
+        <ul>
+          <li><b>Vertex AI</b></li>
+          <li>Gemini 2.5 Flash — adaptation</li>
+          <li>Gemini TTS — dub and description</li>
+        </ul>
+      </div>
+
+      <div class="step">
+        <div class="n">03</div>
+        <h2>Measure</h2>
+        <p>Eighty-seven checks. Every number read off a file — no model
+          produces a value that can block a release.</p>
+        <ul>
+          <li><b>ffmpeg / ffprobe</b></li>
+          <li>OpenTelemetry, GenAI semconv</li>
+          <li>Prometheus remote write</li>
+        </ul>
+      </div>
+
+      <div class="step">
+        <div class="n">04</div>
+        <h2>Judge</h2>
+        <p><code>market_release_ready</code> — everything measured passed,
+          everything owed was measured, nothing is stale.</p>
+        <ul>
+          <li><b>Grafana Cloud · Mimir</b></li>
+          <li>a recording rule, not our code</li>
+          <li>alert evaluated every 30s</li>
+        </ul>
+      </div>
+
+      <div class="step">
+        <div class="n">05</div>
+        <h2>Repair</h2>
+        <p>One specialist per failing dimension. Each predicts its own result
+          and is marked against it.</p>
+        <ul>
+          <li><b>Agent Development Kit</b></li>
+          <li>mcp-grafana <b>--disable-write</b></li>
+          <li>authority earned, not granted</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="back">
+      <span class="tag">↩ back to 02</span>
+      <p>A repair gives the asset a new hash, so everything built from the old
+        one is stale until it is rebuilt — and the market stays blocked while
+        it is. Lineage decides the order the repairs are applied in.</p>
+    </div>
+
+    <div class="feet">
+      <div><b>Cloud Run</b> — two services, one image, one digest: an alert-driven
+        repair and an operator-approved one are the same code</div>
+      <div><b>Read-only by construction</b> — the agents' only door into Grafana
+        registers <em>zero write tools</em></div>
+    </div>
+  </div>
+</body>
+</html>

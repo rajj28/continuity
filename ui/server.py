@@ -872,12 +872,17 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             page = (Path(__file__).parent / "index.html").read_bytes()
             return self._send(200, page, "text/html; charset=utf-8")
-        # The film's last frame, served rather than opened off disk: Chrome
-        # gives a file:// page an opaque origin and the first casualties are
-        # the fonts and the layout that make it match everything before it.
-        if path in ("/endcard", "/endcard.html"):
-            card = (Path(__file__).parent / "endcard.html").read_bytes()
-            return self._send(200, card, "text/html; charset=utf-8")
+        # Three static frames of the film, served rather than opened off
+        # disk: Chrome gives a file:// page an opaque origin and the first
+        # casualties are the fonts and the layout that make them match
+        # everything before them.
+        if path.strip("/") in ("endcard", "architecture", "wakelog"):
+            name = path.strip("/") + ".html"
+            frame = Path(__file__).parent / name
+            if not frame.exists():
+                return self._json({"error": name + " has not been built"}, 404)
+            return self._send(200, frame.read_bytes(),
+                              "text/html; charset=utf-8")
         # /api/health and not /healthz. Cloud Run's frontend reserves the
         # latter and answers it itself with a Google error page, so a probe
         # there reports the service down while it is serving every other path

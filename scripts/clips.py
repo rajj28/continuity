@@ -96,9 +96,9 @@ async def board(take, token: str):
     await take.push(await take.rect_of("table.matrix", 8), 1.6)
     await take.hold(5.0)
     await take.focus('#rows .row[data-m="de-DE"]', 1.4, pad=10)
-    await take.hold(4.5)
+    await take.hold(5.5)
     await take.wide(1.5)
-    await take.hold(3.0)
+    await take.hold(6.5)
 
 
 async def release(take, token: str):
@@ -304,6 +304,86 @@ async def dimensions(take, token: str):
     await take.hold(4.5)
 
 
+async def repair_ask(take, token: str):
+    """A proposal, with the number it promises to reach, and the press.
+
+    The film says elsewhere that an agent must predict its own result before
+    it is allowed to act. This is the only place that promise is on screen:
+    the strategy, the parameters, the series and the value it will land past,
+    and the authority tier -- RECOMMEND, because REMIX has no measured history
+    in this market and therefore proposes rather than acts. Approving is a
+    person supplying authority the agent has not yet earned.
+    """
+    await take.goto(LOCAL + "/#pt-BR", settle=2)
+    await take.js("sessionStorage.setItem('op', %r)" % token)
+    await take.goto(LOCAL + "/#pt-BR", settle=2)
+    await take.wait_for("!!document.querySelector('#detail .prop')", timeout=150)
+    await asyncio.sleep(1.0)
+    await take.push(await take.rect_of("#detail .prop", 20), 1.3)
+    await take.hold(9.0)
+    pressed = await take.js(
+        "(() => { const b = document.getElementById('approve');"
+        " if (!b || b.disabled) return false; b.click(); return true; })()")
+    if not pressed:
+        raise RuntimeError("no enabled Approve button -- is a proposal pending "
+                           "and is the operator token set?")
+    # Long enough to see the button change and the run log open. The repair
+    # itself takes about a minute: it re-investigates, acts, re-probes, and
+    # writes the outcome. Sitting on a spinner for that minute is not a shot,
+    # so the film cuts to the ledger, which is where the answer is kept.
+    await take.watch(9.0)
+
+
+async def repair_done(take, token: str):
+    """Where the answer is kept: the ledger, and the measurement it moved.
+
+    Deliberately not a continuation of the previous shot's clock. What the
+    approval produced is written down -- outcome, baseline, observed, and the
+    prediction it is judged against -- and that record outlives the run log
+    on somebody's screen. The line in view is the one the previous shot
+    started.
+    """
+    await _open_board(take)
+    # Wait for the detail pane to finish before scrolling past it. It is one
+    # round trip per figure to Grafana Cloud, and until it lands it is a short
+    # skeleton -- so anything below it is measured at the wrong height, and the
+    # camera frames the panel that was there a second ago.
+    await take.wait_for("!!document.getElementById('measured')", timeout=150)
+    await take.js("document.getElementById('activity')"
+                  ".scrollIntoView({block: 'center'})")
+    await asyncio.sleep(1.0)
+    await take.push(await take.rect_of("#activity", 10), 1.2)
+    await take.hold(17.5)
+
+
+async def wakelog(take, token: str):
+    """Grafana calling the agents, in the receiver's own words.
+
+    Everything else about the alert path is shown from Grafana's side, where
+    a rule can be firing and nothing on earth be listening. This is the other
+    end of the webhook.
+    """
+    await take.goto(LOCAL + "/wakelog", settle=2)
+    await take.hold(13.0)
+
+
+async def architecture(take, token: str):
+    """The shape, once, after every part of it has been seen working.
+
+    Deliberately last before the close. Shown at the start it would be a
+    diagram of claims; shown here it is a recap of things the viewer has
+    already watched happen.
+    """
+    await take.goto(LOCAL + "/architecture", settle=2)
+    await take.hold(4.0)
+    await take.push(await take.rect_of_all(".band .step", 26), 1.4)
+    await take.hold(7.5)
+    await take.push(await take.rect_of(".back", 30), 1.2)
+    await take.hold(4.5)
+    await take.wide(1.4)
+    await take.hold(4.0)
+
+
 async def endcard(take, token: str):
     """The last frame, and the only one that is not the product.
 
@@ -384,6 +464,11 @@ async def swarm(take, token: str):
 async def autonomy(take, token: str):
     """What each strategy has earned, and what the contracts have refused."""
     await _open_board(take)
+    # Wait for the detail pane to finish before scrolling past it. It is one
+    # round trip per figure to Grafana Cloud, and until it lands it is a short
+    # skeleton -- so anything below it is measured at the wrong height, and the
+    # camera frames the panel that was there a second ago.
+    await take.wait_for("!!document.getElementById('measured')", timeout=150)
     await take.js("document.getElementById('autonomy')"
                   ".scrollIntoView({block: 'center'})")
     await asyncio.sleep(0.9)
@@ -399,9 +484,14 @@ async def autonomy(take, token: str):
 async def repairs(take, token: str):
     """The ledger: lucky and failed alongside the successes."""
     await _open_board(take)
+    # Wait for the detail pane to finish before scrolling past it. It is one
+    # round trip per figure to Grafana Cloud, and until it lands it is a short
+    # skeleton -- so anything below it is measured at the wrong height, and the
+    # camera frames the panel that was there a second ago.
+    await take.wait_for("!!document.getElementById('measured')", timeout=150)
     await take.js("document.getElementById('activity')"
                   ".scrollIntoView({block: 'center'})")
-    await asyncio.sleep(0.9)
+    await asyncio.sleep(1.0)
     await take.push(await take.rect_of("#activity", 10), 1.1)
     await take.hold(12.0)
 
@@ -501,6 +591,10 @@ SHOTS = {
     "listen": (listen, None),
     "compliance": (compliance, None),
     "dimensions": (dimensions, None),
+    "repair_ask": (repair_ask, None),
+    "repair_done": (repair_done, None),
+    "wakelog": (wakelog, None),
+    "architecture": (architecture, None),
     "endcard": (endcard, None),
     "verdict": (verdict, None),
     "coverage": (coverage, None),
@@ -522,22 +616,25 @@ SHOTS = {
 # it is measured, who decides, what happens when it breaks, how the agents are
 # marked, and where it ends up.
 BLOCKS = {
-    "vo1": ["board"],
-    "vo2": ["release", "lineage", "outputs"],
+    "vo1":  ["board"],
+    "vo2":  ["release", "lineage", "outputs"],
     # The one block whose soundtrack is the product. See scripts/listen.py.
     "vo2b": ["listen"],
     "vo2c": ["dimensions"],
-    "vo3": ["verdict", "grafana_dash", "grafana_verdict"],
-    "vo4": ["coverage", "grafana_rule"],
-    "vo5": ["swarm"],
+    "vo3":  ["verdict", "grafana_dash", "grafana_verdict"],
+    "vo4":  ["coverage", "grafana_rule"],
+    "vo4b": ["wakelog"],
+    "vo5":  ["swarm"],
+    "vo5c": ["repair_ask", "repair_done"],
     "vo5b": ["compliance"],
-    "vo6": ["repairs", "autonomy", "grafana_agent"],
+    "vo6":  ["repairs", "autonomy", "grafana_agent"],
+    "vo6b": ["architecture"],
     # Not `unrepairable` any more. Three clips came to thirty-two seconds
     # against twenty of narration, and since a group is trimmed from the end,
     # the end card -- the only frame carrying the links -- was cut off
     # entirely. What that shot said is now said better by the compliance
     # panel a minute earlier, with the actual reasons on screen.
-    "vo7": ["close", "endcard"],
+    "vo7":  ["close", "endcard"],
 }
 
 ORDER = [name for block in BLOCKS.values() for name in block

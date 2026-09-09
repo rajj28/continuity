@@ -38,6 +38,8 @@ repair failed and the plan is revised.
 
 **Models propose. Measurements dispose.**
 
+![The control room: five markets, eight dimensions, one pip per check](docs/img/control-room.png)
+
 ---
 
 ## Live
@@ -74,6 +76,8 @@ That token runs investigations and **cannot approve a repair**, and the wake
 receiver does not accept it at all. It is published deliberately; the operator
 token is not. An investigation costs model quota and changes no asset, which is
 why this one can be public.
+
+![A build running: the seven stages of the pipeline, streaming their own output](docs/img/build.png)
 
 A build cannot be driven with that token. Starting one speaks every line of
 dialogue through a model and rewrites this title's assets, so it needs the
@@ -142,6 +146,29 @@ python -m pip install -r requirements.txt
 python -m pytest -q                    # 310 passing
 ```
 
+### What comes out
+
+Not a report about the work — the work. Every market's outputs are playable in
+the control room: the scene as delivered, the dub, the described track, and the
+packaged deliverable with all of it muxed together.
+
+![The produced media, playable in the control room](docs/img/outputs.png)
+
+### What an agent is allowed to do
+
+A repair is proposed before it is made, states the series and the value it will
+land past, and is marked against that prediction afterwards. A strategy with no
+measured history in a market proposes and waits for a person; it earns the
+right to act alone after three verified successes.
+
+![A proposal awaiting a human: strategy, prediction, authority, cited evidence](docs/img/proposal.png)
+
+And the ledger keeps what happened, including the times it went wrong. The top
+line improved the loudness by four and a half decibels, missed the number it
+promised, and is recorded as a failure.
+
+![The repair ledger: succeeded, lucky and failed together](docs/img/ledger.png)
+
 ### The pipeline, end to end
 
 The control room runs exactly this sequence when a master is dropped on it —
@@ -187,6 +214,10 @@ python grafana/alerting.py --url <wake-url>/alert # point Grafana at it
 ```
 
 ---
+
+## The loop
+
+![The loop: ingest, build, measure, judge, repair — and the return path](docs/img/architecture.png)
 
 ## What each piece is doing there
 
