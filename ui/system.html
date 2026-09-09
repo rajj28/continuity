@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Continuity — system diagram</title>
+<!--
+  The system diagram: components, boundaries, and the direction data moves.
+
+  `diagram.html` is the five-stage story of what happens to a film.  This is
+  the other question — which process runs where, what crosses which trust
+  boundary, and which arrow is the one that closes the loop.  Drawn as SVG so
+  the arrows are exact and the whole thing survives being scaled down to a
+  gallery thumbnail.
+
+  Two facts the layout is built to make unmissable:
+    · the only arrow from the agents into Grafana passes through a box marked
+      --disable-write, and
+    · the arrow that STARTS the agents comes out of Grafana, not out of us.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; background: #0b0b0a; }
+  body { display: flex; align-items: center; justify-content: center; }
+  svg { width: min(1500px, 98vw); height: auto; display: block; }
+  .lane      { fill: #101010; stroke: #262623; }
+  .lane-gc   { stroke: rgba(57,135,229,.35); }
+  .lane-gr   { stroke: rgba(244,104,0,.35); }
+  .lane-lab  { font: 600 15px/1 Inter, system-ui, sans-serif;
+               letter-spacing: .2em; text-transform: uppercase; }
+  .box       { fill: #171716; stroke: #35352f; }
+  .box-gc    { stroke: #3987e5; }
+  .box-gr    { stroke: #f46800; }
+  .box-mcp   { fill: #17150f; stroke: #e0b558; }
+  .chip      { fill: #0f0f0e; stroke: #35352f; stroke-dasharray: 4 4; }
+  .t         { font: 600 19px/1 Inter, system-ui, sans-serif; fill: #f6f5f1; }
+  .s         { font: 14px/1 ui-monospace, Consolas, monospace; fill: #a8a69c; }
+  .s2        { font: 13px/1 ui-monospace, Consolas, monospace; fill: #6b6960; }
+  .chip-t    { font: 15px/1 ui-monospace, Consolas, monospace; fill: #a8a69c; }
+  .arr       { stroke: #6b6960; stroke-width: 2; fill: none;
+               marker-end: url(#head); }
+  .arr-hot   { stroke: #f46800; stroke-width: 2.5; fill: none;
+               marker-end: url(#head-hot); }
+  .arr-warm  { stroke: #e0b558; stroke-width: 2; fill: none;
+               marker-end: url(#head-warm); stroke-dasharray: 7 5; }
+  .lbl       { font: 13px/1 ui-monospace, Consolas, monospace; fill: #6b6960; }
+  .lbl-hot   { font: 600 13px/1 ui-monospace, Consolas, monospace; fill: #f46800; }
+  .lbl-warm  { font: 13px/1 ui-monospace, Consolas, monospace; fill: #e0b558; }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 1500 1000" xmlns="http://www.w3.org/2000/svg"
+     font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6960"/></marker>
+    <marker id="head-hot" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f46800"/></marker>
+    <marker id="head-warm" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e0b558"/></marker>
+  </defs>
+
+  <!-- ── lanes ─────────────────────────────────────────────────────── -->
+  <rect class="lane lane-gc" x="60"  y="112" width="580" height="800" rx="12"/>
+  <text class="lane-lab" x="80" y="140" fill="#3987e5">Google Cloud</text>
+  <rect class="lane lane-gr" x="880" y="546" width="560" height="366" rx="12"/>
+  <text class="lane-lab" x="900" y="574" fill="#f46800">Grafana Cloud</text>
+
+  <!-- ── input / output ────────────────────────────────────────────── -->
+  <rect class="chip" x="100" y="32" width="500" height="56" rx="8"/>
+  <text class="chip-t" x="124" y="66">master.mp4 + dialogue.srt + markets</text>
+  <rect class="chip" x="920" y="32" width="500" height="56" rx="8"/>
+  <text class="chip-t" x="944" y="66">picture + dub + described + subs, per market</text>
+
+  <!-- ── Google Cloud boxes ────────────────────────────────────────── -->
+  <g>
+    <rect class="box box-gc" x="100" y="150" width="500" height="86" rx="8"/>
+    <text class="t"  x="124" y="184">Cloud Run · control room</text>
+    <text class="s"  x="124" y="212">upload, SSE build stream, operator approval</text>
+  </g>
+  <g>
+    <rect class="box box-gc" x="100" y="262" width="500" height="86" rx="8"/>
+    <text class="t"  x="124" y="296">Vertex AI</text>
+    <text class="s"  x="124" y="324">Gemini 2.5 Flash — adapt · Gemini TTS — speak</text>
+  </g>
+  <g>
+    <rect class="box" x="100" y="374" width="500" height="86" rx="8"/>
+    <text class="t"  x="124" y="408">Pipeline stages 1–6 · ffmpeg</text>
+    <text class="s"  x="124" y="436">dub · subtitles · description · storefront · package</text>
+  </g>
+  <g>
+    <rect class="box" x="100" y="486" width="500" height="86" rx="8"/>
+    <text class="t"  x="124" y="520">Content-addressed store</text>
+    <text class="s"  x="124" y="548">sha256 + parent hashes → staleness is a comparison</text>
+  </g>
+  <g>
+    <rect class="box" x="100" y="598" width="500" height="86" rx="8"/>
+    <text class="t"  x="124" y="632">QC probes — 87 checks</text>
+    <text class="s"  x="124" y="660">ffmpeg / ffprobe → OpenTelemetry, GenAI semconv</text>
+  </g>
+  <g>
+    <rect class="box box-gc" x="100" y="710" width="500" height="86" rx="8"/>
+    <text class="t"  x="124" y="744">Cloud Run · wake receiver</text>
+    <text class="s"  x="124" y="772">same image, same digest, different argument</text>
+  </g>
+  <g>
+    <rect class="box box-gc" x="100" y="822" width="500" height="86" rx="8"/>
+    <text class="t"  x="124" y="856">ADK — conductor + 5 specialists</text>
+    <text class="s"  x="124" y="884">predict → act → verify → record succeeded / lucky / failed</text>
+  </g>
+
+  <!-- ── the boundary ──────────────────────────────────────────────── -->
+  <rect class="box box-mcp" x="666" y="822" width="190" height="86" rx="8"/>
+  <text class="s" x="686" y="852" fill="#e0b558">mcp-grafana</text>
+  <text class="s2" x="686" y="876">--disable-write</text>
+  <text class="s2" x="686" y="896">zero write tools</text>
+
+  <!-- ── Grafana Cloud boxes ───────────────────────────────────────── -->
+  <g>
+    <rect class="box box-gr" x="920" y="598" width="500" height="86" rx="8"/>
+    <text class="t"  x="944" y="632">Mimir — metrics + thresholds</text>
+    <text class="s"  x="944" y="660">market_release_ready · a recording rule, promtool tested</text>
+  </g>
+  <g>
+    <rect class="box box-gr" x="920" y="710" width="500" height="86" rx="8"/>
+    <text class="t"  x="944" y="744">Grafana Alerting — every 30s</text>
+    <text class="s"  x="944" y="772">MarketNotReleaseReady · RepairVerificationFailing</text>
+  </g>
+  <g>
+    <rect class="box box-gr" x="920" y="822" width="500" height="86" rx="8"/>
+    <text class="t"  x="944" y="856">3 dashboards</text>
+    <text class="s"  x="944" y="884">verdict · media QC · the agents' own telemetry</text>
+  </g>
+
+  <!-- ── arrows ────────────────────────────────────────────────────── -->
+  <path class="arr" d="M 350 88  L 350 146"/>
+  <path class="arr" d="M 350 236 L 350 258"/>
+  <path class="arr" d="M 350 348 L 350 370"/>
+  <path class="arr" d="M 350 460 L 350 482"/>
+  <path class="arr" d="M 350 572 L 350 594"/>
+
+  <!-- store → the deliverable -->
+  <path class="arr" d="M 600 529 L 760 529 L 760 60 L 916 60"/>
+  <text class="lbl" x="772" y="300">stage 6</text>
+  <text class="lbl" x="772" y="320">packages</text>
+
+  <!-- measurements into Grafana -->
+  <path class="arr" d="M 600 641 L 916 641"/>
+  <text class="lbl" x="648" y="624">Prometheus</text>
+  <text class="lbl" x="648" y="662">remote write</text>
+
+  <!-- verdict → alert → back to us: the arrow that closes the loop -->
+  <path class="arr-hot" d="M 1170 684 L 1170 706"/>
+  <path class="arr-hot" d="M 920 753 L 604 753"/>
+  <text class="lbl-hot" x="648" y="730">webhook POST</text>
+  <text class="lbl-hot" x="648" y="748">Grafana calls</text>
+  <text class="lbl-hot" x="648" y="766">the agents</text>
+  <path class="arr-hot" d="M 350 796 L 350 818"/>
+
+  <!-- agents read Grafana, through the read-only boundary and nowhere else -->
+  <path class="arr-warm" d="M 604 865 L 662 865"/>
+  <path class="arr-warm" d="M 856 865 L 1466 865 L 1466 641 L 1424 641"/>
+  <text class="lbl-warm" x="1120" y="946">read-only queries · the agents' only door</text>
+
+  <!-- an approved repair rewrites an asset, and everything built on it stales -->
+  <path class="arr-warm" d="M 96 865 L 34 865 L 34 417 L 96 417"/>
+  <text class="lbl-warm" x="14" y="640" transform="rotate(-90 14 640)">
+    approved repair → new version → downstream stale</text>
+</svg>
+</body>
+</html>

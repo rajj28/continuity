@@ -52,26 +52,65 @@ model-context-protocol, mcp-grafana, opentelemetry, python, ffmpeg,
 server-sent-events, docker, pytest, javascript, apache-2.0
 ```
 
-## 7 · Image gallery  *(upload in this order)*
+## 7 · Image gallery  *(15 images, `docs/gallery/`)*
+
+All 1800×1200 (3:2), captured from the running control room at 2x — not frames
+pulled out of the video. Upload in this order; captions are in
+`docs/gallery/README.md`.
 
 ```
-docs/img/01-architecture.png       How it works, end to end
-docs/img/02-control-room.png       The control room: 5 markets, 8 dimensions, 87 checks
-docs/img/03-build.png              A build running: seven real stages, streaming their own output
-docs/img/04-outputs.png            What the agents made, playable in the browser
-docs/img/05-proposal.png           A proposal awaiting a human: prediction, authority, cited evidence
-docs/img/06-ledger.png             The ledger: succeeded, lucky and failed, together
-docs/img/07-compliance.png         The dimensions no agent may touch, and why
-docs/img/08-grafana-verdict.png    Grafana owns the verdict
-docs/img/09-grafana-agents.png     Grafana watching the agents themselves
-docs/img/10-grafana-calls.png      The alert answering: three markets woken in one second
+01-control-room     02-new-release      03-readiness        04-verdict
+05-outputs          06-compliance       07-lineage          08-blast-radius
+09-proposal         10-ledger           11-autonomy         12-architecture
+13-alert-received   14-grafana-verdict  15-grafana-agents
+```
+
+## 8 · The four short answers
+
+**Please provide a URL to your open source code repository. Must include OSI license**
+
+```
+https://github.com/rajj28/continuity
+```
+
+Apache-2.0, detected by GitHub and visible in the About panel.
+
+**Provide a URL to the hosted Project for judging and testing**
+
+```
+https://continuity-control-z6txmgck2a-el.a.run.app
+```
+
+**What Google Cloud products did you use in this project?**
+
+```
+Vertex AI (Gemini 2.5 Flash for dialogue adaptation and agent reasoning;
+Gemini TTS for the dub and audio description) · Agent Development Kit (ADK)
+· Cloud Run (two services from one image at one digest: the control room and
+the alert receiver) · Cloud Build · Artifact Registry · Cloud Logging ·
+Cloud Storage · Pub/Sub (enabled) · IAM service accounts with Application
+Default Credentials — no consumer API key anywhere in the deployed path
+```
+
+**Please list all other tools or products you used in your project**
+
+```
+Grafana Cloud — Mimir (metrics, thresholds and the market_release_ready
+recording rule, promtool-tested), Grafana-managed Alerting, Grafana
+dashboards · mcp-grafana, run with --disable-write as the agents' only
+interface to Grafana · Model Context Protocol · Prometheus remote write ·
+PromQL · OpenTelemetry, GenAI semantic conventions · ffmpeg and ffprobe —
+every number that can block a release · Python 3.11 · pytest (339 tests) ·
+Docker · Chrome DevTools Protocol (the demo was shot headlessly by
+scripts/record.py) · ElevenLabs (voiceover for the demo video only — no part
+of the product) · Sintel, © Blender Foundation, CC BY 3.0
 ```
 
 ---
 
-# 8 · Project story — paste everything below this line
+# 9 · Project story — paste everything below this line
 
-![Continuity architecture](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/architecture-diagram.png)
+![Continuity system diagram](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/system-diagram.png)
 
 **A film does not ship to the world once. It ships fifty times.**
 
@@ -119,13 +158,13 @@ record, release check, package. They stream their own output as they go,
 because they *are* the scripts in the repository, started as processes. Nothing
 was reimplemented to make a screen move.
 
-![A build running](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/03-build.png)
+![A build running](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/02-new-release.png)
 
 **And you can play what came out.** Every produced file is served by asset id
 out of a content-addressed store: the scene as delivered, the dub, the
 described track, and the packaged deliverable with all of it muxed together.
 
-![What the agents made](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/04-outputs.png)
+![What the agents made](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/05-outputs.png)
 
 A dub you cannot hear is indistinguishable from one that was never made. That
 is why the demo video plays them at 1:12 rather than describing them.
@@ -145,7 +184,7 @@ is why the demo video plays them at 1:12 rather than describing them.
 | **Certification** | ratings body, state, and whether the certificate was granted against *this* cut |
 | **Packaging** | required deliverables complete, storefront record localised, forced narratives present |
 
-![The control room](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/02-control-room.png)
+![The control room](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/03-readiness.png)
 
 Those are the ones it runs today. The same shape extends to the rest of what a
 real delivery is checked against — scan type and active picture, colour
@@ -159,7 +198,7 @@ file. None of them changes the architecture.
 
 **And the dimensions that cannot be repaired say so, and say why.**
 
-![Compliance](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/07-compliance.png)
+![Compliance](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/06-compliance.png)
 
 Japan fails on a right that was never granted, a right whose window does not
 open until the 15th, and a certificate nobody has submitted. Germany's
@@ -182,13 +221,13 @@ market_release_ready =
     * (1 - market_has_stale_assets)    # nothing built on a stale parent
 ```
 
-![Grafana owns the verdict](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/08-grafana-verdict.png)
+![Grafana owns the verdict](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/14-grafana-verdict.png)
 
 **2 · Grafana initiates the work.** A Grafana-managed alert fires on
 `market_release_ready < 1` and POSTs to a Cloud Run receiver. The agents do not
 poll and have no scheduler. This is the deployed receiver's own log:
 
-![The alert answering](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/10-grafana-calls.png)
+![The alert answering](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/13-alert-received.png)
 
 Three markets woken in the same second, and a second rule underneath watching
 whether the last repair actually held. Rendered by `scripts/wakelog.py`, which
@@ -209,7 +248,7 @@ semantic conventions: tool calls, how each run ended, model call duration,
 control-loop steps, and guardrail refusals as
 `continuity_agent_rejections_total{reason}`.
 
-![Grafana watching the agents](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/09-grafana-agents.png)
+![Grafana watching the agents](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/15-grafana-agents.png)
 
 The agents are not merely watched *by* this stack. They are watched *in the
 same stack they read their instructions from.* Three dashboards are generated
@@ -256,7 +295,7 @@ passed, but the prediction did not hold) or `failed`. `lucky` raises the
 denominator and not the numerator, so a strategy cannot earn autonomy by
 coincidence.
 
-![A proposal awaiting a human](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/05-proposal.png)
+![A proposal awaiting a human](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/09-proposal.png)
 
 **The demo shows one of these going wrong, live.** At 3:32 the audio specialist
 proposes a REMIX on pt-BR, predicting
@@ -264,7 +303,7 @@ proposes a REMIX on pt-BR, predicting
 real audio and lands at **−23.32** — four and a half decibels better than it
 started, and short of what it promised. The ledger records it as **failed**.
 
-![The ledger](https://raw.githubusercontent.com/rajj28/continuity/main/docs/img/06-ledger.png)
+![The ledger](https://raw.githubusercontent.com/rajj28/continuity/main/docs/gallery/10-ledger.png)
 
 In the same investigation, the localisation specialist looked at the sync
 failure and **refused to touch it**, because `dub_drift_systematic = 0` meant a
