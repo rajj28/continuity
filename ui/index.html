@@ -1095,7 +1095,8 @@ async function loadSources(select) {
     el.innerHTML = list.map(f =>
       `<option value="${esc(f.path)}">${esc(f.name)} · ${mb(f.bytes)}` +
       `${f.stock ? " · shipped with the project" : ""}</option>`).join("")
-      || `<option value="">none yet</option>`;
+      || `<option value="">— nothing shipped in this deployment —</option>`;
+    el.disabled = !list.length;
     // Keep what was selected across a refresh, unless this call knows better
     // -- an upload should land selected, and nothing else should move.
     const wanted = (select && list.some(f => f.path === select)) ? select : had;

@@ -117,8 +117,20 @@ async def outputs(take, token: str):
     able from one that was never made, and the whole project is an argument
     against being asked to take that on trust.
     """
-    await take.goto(CONTROL + "/#de-DE", settle=2)
-    await take.wait_for("!!document.getElementById('investigate')")
+    # Local, like the build shot before it, and for a related reason: the
+    # deployed image carries the dub, the described track and the package but
+    # not the scene's own audio, which lives in the store's objects/ directory
+    # with a quarter of a gigabyte of other media. Playing the original
+    # against the dub is the comparison that makes a dub mean anything, so
+    # this is taken where all four files exist.
+    await take.goto(LOCAL + "/#de-DE", settle=2)
+    # Waits on the outputs themselves, and waits a long time. The detail pane
+    # is one round trip per figure to Grafana Cloud, and from here that is
+    # forty seconds of wide-area latency -- fast from the deployed service,
+    # which sits in the same region. Waiting for the button would pass while
+    # the panel this shot is about was still a skeleton.
+    await take.wait_for(
+        "document.querySelectorAll('#detail .out-row').length > 0", timeout=120)
     await take.js(
         "(() => { const h = [...document.querySelectorAll('#detail h2')]"
         "  .find(e => e.textContent.includes('agents made'));"
@@ -146,7 +158,12 @@ async def coverage(take, token: str):
     await _open_board(take)
     await take.push(await take.rect_of("table.matrix", 8), 0.1)
     await take.hold(2.0)
-    await take.focus('#rows .row[data-m="pt-BR"]', 1.5, pad=12)
+    # hi-IN and not pt-BR. pt-BR used to be the market with six checks nobody
+    # had run; it was then built through the pipeline from the control room,
+    # which is what filled them in. Being able to see that is the point of the
+    # build panel -- but it means the shot about never-measured checks has to
+    # point at a market that has not been built yet.
+    await take.focus('#rows .row[data-m="hi-IN"]', 1.5, pad=12)
     await take.hold(5.0)
     await take.push(await take.rect_of(".legend", 30), 1.3)
     await take.hold(3.5)

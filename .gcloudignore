@@ -69,10 +69,14 @@ out/scenes/*
 !out/dub/
 !out/subs/
 !out/deliverables/
-# The scene's own audio, which every market's "original" output resolves to.
-# One object out of the store's objects/ directory, named because the rest of
-# that directory is a quarter of a gigabyte.
-!out/store/objects/27/
+# NOT the scene's own audio, which every market's "original" output resolves
+# to and which lives in objects/. Two attempts to re-include that one file
+# past the exclusion of the directory holding it were refused by the upload
+# filter -- correctly, by gitignore's own rule that a file cannot be put back
+# once its parent directory is out. So the hosted control room plays the dub,
+# the described track and the packaged deliverable, and simply does not list
+# an original it has no bytes for. `outputs` omits what is not there rather
+# than offering a control that cannot play.
 
 
 # Not needed to build or run. scripts/ IS needed: the control room's approve
