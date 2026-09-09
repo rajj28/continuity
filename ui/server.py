@@ -223,6 +223,7 @@ class State:
             "diagnostics": diagnostics,
             "proposal": self.proposal(market),
             "assets": self.assets(market),
+            "outputs": self.outputs(market),
             "blast_radius": self.blast_radius(market),
             "grafana": self.grafana_link(market),
         }
@@ -417,6 +418,75 @@ class State:
                 ]
         return {"hours": hours, "step": step, "markets": markets,
                 "query": f'market_release_ready{{title="{TITLE}"}}'}
+
+    # What each kind of output is called on screen, and the order a person
+    # would want to hear them in: the original first, so the dub has something
+    # to be compared against.
+    PLAYABLE = (
+        ("SCENE_AUDIO", "Original audio", "the scene as delivered"),
+        ("DUB_STEM", "Dubbed dialogue", "adapted and spoken by Gemini"),
+        ("AUDIO_DESCRIPTION", "Audio description",
+         "narration written into the gaps between lines"),
+        ("PACKAGE", "The deliverable",
+         "picture, dub, described track and subtitles in one file"),
+    )
+    MEDIA_TYPES = {".wav": "audio/wav", ".mp3": "audio/mpeg",
+                   ".mp4": "video/mp4", ".m4a": "audio/mp4",
+                   ".srt": "text/plain; charset=utf-8"}
+
+    def outputs(self, market: str, scene: str = "S03") -> list[dict[str, Any]]:
+        """The media this market's agents actually produced.
+
+        Everything else on this screen is a representation of the work -- a
+        pip, a number, a hash. This is the work. A dub you cannot hear is a
+        row in a table, and a viewer has no way to tell it apart from one that
+        was never made.
+        """
+        out = []
+        for kind, label, note in self.PLAYABLE:
+            for asset in self.store.all_assets():
+                if asset.kind != kind or asset.scene_id != scene:
+                    continue
+                # Scene audio and picture belong to the title, not a market.
+                if asset.market not in (market, None, ""):
+                    continue
+                path = Path(asset.uri)
+                if not path.is_absolute():
+                    path = ROOT / path
+                if not path.exists():
+                    continue
+                out.append({
+                    "asset": asset.id, "kind": kind, "label": label,
+                    "note": note, "version": asset.version,
+                    "media": self.MEDIA_TYPES.get(path.suffix.lower(), ""),
+                    "bytes": path.stat().st_size,
+                })
+                break
+        return out
+
+    def media(self, asset_id: str) -> tuple[Path, str] | None:
+        """Resolve an asset id to a file, or nothing.
+
+        By id, never by path. The id is looked up in the index and the result
+        is checked to be inside the project before a single byte is read --
+        this endpoint is reachable from a public service, and "serve the file
+        this string points at" is how a media route becomes a way to read
+        anything on the disk.
+        """
+        try:
+            asset = self.store.load(asset_id)
+        except (OSError, ValueError, KeyError):
+            return None
+        path = Path(asset.uri)
+        if not path.is_absolute():
+            path = ROOT / path
+        try:
+            path = path.resolve(strict=True)
+            path.relative_to(ROOT.resolve())
+        except (OSError, ValueError):
+            return None
+        return path, self.MEDIA_TYPES.get(path.suffix.lower(),
+                                          "application/octet-stream")
 
     def guardrails(self, limit: int = 6) -> dict[str, Any]:
         """What the contracts have refused, and how often.
@@ -622,6 +692,56 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _media(self, asset_id: str) -> None:
+        """Stream a produced file, honouring Range.
+
+        Range matters more than it looks: without it a browser cannot seek an
+        audio element and Safari will not play one at all, so the dub would be
+        listed and unplayable -- which is worse than not listing it.
+        """
+        found = self.state.media(asset_id)
+        if found is None:
+            return self._json({"error": "no such asset"}, 404)
+        path, kind = found
+        size = path.stat().st_size
+
+        start, end = 0, size - 1
+        header = self.headers.get("Range", "")
+        partial = header.startswith("bytes=")
+        if partial:
+            first, _, last = header[6:].partition("-")
+            try:
+                start = int(first) if first else 0
+                end = int(last) if last else size - 1
+            except ValueError:
+                start, end = 0, size - 1
+            start = max(0, min(start, size - 1))
+            end = max(start, min(end, size - 1))
+
+        length = end - start + 1
+        self.send_response(206 if partial else 200)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Accept-Ranges", "bytes")
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        with path.open("rb") as fh:
+            fh.seek(start)
+            remaining = length
+            while remaining > 0:
+                chunk = fh.read(min(remaining, 256 * 1024))
+                if not chunk:
+                    break
+                try:
+                    self.wfile.write(chunk)
+                except (BrokenPipeError, ConnectionResetError):
+                    # A browser that seeks abandons the request it had open.
+                    # Entirely normal; not worth a stack trace in the log.
+                    return
+                remaining -= len(chunk)
+
     def _json(self, payload: Any, code: int = 200) -> None:
         self._send(code, json.dumps(payload).encode(), "application/json")
 
@@ -685,6 +805,10 @@ class Handler(BaseHTTPRequestHandler):
                 board["demo_open"] = bool(self.state.demo_token)
                 board["guardrails"] = self.state.guardrails()
                 return self._json(board)
+            if path == "/api/media":
+                from urllib.parse import parse_qs, urlparse
+                asset = parse_qs(urlparse(self.path).query).get("asset", [""])[0]
+                return self._media(asset)
             if path == "/api/history":
                 return self._json(self.state.history())
             if path.startswith("/api/market/"):
